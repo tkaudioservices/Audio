@@ -1,0 +1,43 @@
+name: Build Galileo Loader (Windows)
+
+on:
+  push:
+    tags:
+      - 'galileo-loader-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: 'Galileo Loader'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build GalileoLoader.exe
+        run: pyinstaller --onefile --name GalileoLoader --add-data "tk_logo.png;." galileo_loader.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GalileoLoader-windows
+          path: 'Galileo Loader/dist/GalileoLoader.exe'
+          retention-days: 90
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: 'Galileo Loader/dist/GalileoLoader.exe'
+          generate_release_notes: true
