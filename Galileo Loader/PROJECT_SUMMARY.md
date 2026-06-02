@@ -39,7 +39,11 @@ Galileo Loader/
 4. **LAN discovery** — `scan_network`: UDP‑probes every address on the local /24 to
    populate the ARP cache, reads it (`arp -a` / `ip neigh`, parsed for the Windows,
    macOS and Linux formats), reverse‑resolves names, and flags likely Galileos by
-   hostname keywords **and** Meyer's MAC prefix `00:1C:AB`.
+   hostname keywords **and** Meyer's MAC prefixes (`MEYER_PREFIXES` — currently
+   the 24‑bit OUI `00:1C:AB` plus the 28‑bit IAB `00:50:C2:21:6X` under the
+   shared IEEE Registration Authority pool; extend the tuple when new units
+   surface). Each host is returned with a `match` string (`"Meyer OUI"`,
+   `"name match"`, or empty) so the UI can show *why* it was flagged.
 5. **Local web app** — `ThreadingHTTPServer`; routes: `GET /` (page),
    `GET /logo.png`, `POST /scan`, `POST /send`. Binds `127.0.0.1` on an ephemeral
    port and opens the browser. A one‑time random **token** guards `/scan` and

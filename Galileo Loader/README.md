@@ -53,10 +53,12 @@ can eyeball the curve before sending.
 Galileos are **DHCP by default**, so their IP can change. The **Find on network**
 button probes your subnet (a tiny UDP packet to each address), reads the ARP
 table and reverse‑resolves names, then flags likely Meyer devices — by name and
-by **MAC** (Meyer's hardware prefix `00:1C:AB`). Tick **Galileos only** to hide
-everything else. It's a helper, so **confirm it's the right unit** before
-sending; if yours doesn't appear, just type the IP (or use Compass's own
-*Find Devices*). Works on Windows, macOS and Linux.
+by **MAC prefix** (Meyer's `00:1C:AB` OUI and their `00:50:C2:21:6X` IAB block).
+"Galileos only" is on by default; untick it to see every host. Each match shows
+*why* it was flagged (**Meyer OUI** or **name match**), so if a new unit doesn't
+appear, send me its MAC and we can add the prefix. **Confirm it's the right
+unit** before sending; if yours doesn't appear, just type the IP (or use
+Compass's own *Find Devices*). Works on Windows, macOS and Linux.
 
 ## What it sends
 For each PEQ filter, three OSC messages:
@@ -70,12 +72,10 @@ For each PEQ filter, three OSC messages:
 Bands are numbered from "First EQ band #" (default 1). Only **PEQ** filters are
 sent; other types are listed and skipped.
 
-## Please read — safety & provenance
+## Please read — safety
 - This changes EQ on a **live** loudspeaker processor. It never sends until you
   press **Send** / pass `--send`, and the browser always asks you to confirm.
-- The OSC address scheme and port (`15006`) are **reverse‑engineered from the
-  2015 Max patch**, not from official Meyer docs. **Verify on a spare output**
-  before a show.
+  **Verify on a spare output before a show.**
 - The local page only talks to this script on `127.0.0.1`, and a one‑time random
   token guards the send/scan actions.
 

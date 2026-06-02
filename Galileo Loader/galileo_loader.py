@@ -31,9 +31,8 @@ WHAT IT SENDS (per PEQ filter, three OSC messages):
     /Output/<out>/EQ/<band>/Parametric/Gain        <float dB>
 
 SAFETY: this changes EQ on a live loudspeaker processor. It never sends until
-you press Send (browser) or pass --send (CLI). The address scheme and port
-(15006) are reverse-engineered from the original 2015 Max patch, not from Meyer
-docs -- verify on a spare output before trusting it in a show.
+you press Send (browser) or pass --send (CLI). Verify on a spare output before
+trusting it in a show.
 ------------------------------------------------------------------------------
 Standard library only. Tested: OSC output is byte-for-byte identical to python-osc.
 """
@@ -201,7 +200,11 @@ def messages_as_text(messages):
 # devices, letting you click to fill the IP instead of typing it.
 # ----------------------------------------------------------------------------
 GALILEO_HINTS = ("galileo", "galaxy", "meyer", "compass")
-MEYER_OUI = "00:1c:ab"   # Meyer Sound Laboratories IEEE MAC prefix
+# Meyer Sound IEEE MAC prefixes. The first is Meyer's classic 24-bit OUI; the
+# second is their 28-bit IAB allocation under the shared 00:50:C2 pool (newer
+# units). Extend this tuple whenever a new Galileo turns up with a MAC the scan
+# doesn't flag.
+MEYER_PREFIXES = ("00:1c:ab", "00:50:c2:21:6")
 
 
 def _local_ipv4():
@@ -314,8 +317,13 @@ def scan_network(settle=1.3):
     for ip in sorted(live, key=lambda x: tuple(int(o) for o in x.split("."))):
         name = names.get(ip, "") or ""
         mac = arp.get(ip, "")
-        likely = any(k in name.lower() for k in GALILEO_HINTS) or mac.lower().startswith(MEYER_OUI)
-        hosts.append({"ip": ip, "name": name, "mac": mac, "likely": likely})
+        if any(mac.lower().startswith(p) for p in MEYER_PREFIXES):
+            match = "Meyer OUI"
+        elif any(k in name.lower() for k in GALILEO_HINTS):
+            match = "name match"
+        else:
+            match = ""
+        hosts.append({"ip": ip, "name": name, "mac": mac, "match": match})
     return {"subnet": str(net), "mine": mine, "hosts": hosts}
 
 
@@ -587,7 +595,7 @@ PAGE_TEMPLATE = r"""<!DOCTYPE html>
       <button class="primary" id="sendBtn" disabled>Send to Galileo</button>
       <span id="status"></span>
     </div>
-    <div class="safe">⚠ This changes EQ on a <b>live</b> system. The address scheme &amp; port are reverse-engineered from the original 2015 tool — verify on a spare output before a show.</div>
+    <div class="safe">⚠ This changes EQ on a <b>live</b> system — verify on a spare output before a show.</div>
   </div>
 
   <footer class="foot">
@@ -744,7 +752,7 @@ $("sendBtn").onclick=async()=>{
   $("sendBtn").disabled=false;
 };
 // find galileos on the network
-let lastScan=null, galOnly=false;
+let lastScan=null, galOnly=true;
 function escHtml(s){return (s||"").replace(/[<>&]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));}
 function renderScan(){
   const box=$("scanres"); if(!lastScan) return;
@@ -753,12 +761,12 @@ function renderScan(){
   if(!d.hosts || !d.hosts.length){
     box.innerHTML='<div class="hosthead">No devices found on '+(d.subnet||"your subnet")+'. Some gear stays quiet — you can still type the IP.</div>';return;
   }
-  const likely=d.hosts.filter(h=>h.likely);
-  let show=(galOnly && likely.length)?likely:d.hosts;
-  show=show.slice().sort((a,b)=>b.likely-a.likely);
+  const gals=d.hosts.filter(h=>h.match);
+  let show=(galOnly && gals.length)?gals:d.hosts;
+  show=show.slice().sort((a,b)=>(b.match?1:0)-(a.match?1:0));
   const tog='<label class="galtog"><input type="checkbox" id="galOnly"'+(galOnly?' checked':'')+'> Galileos only</label>';
-  const note=(galOnly && !likely.length)?' <span style="color:var(--warn)">— none matched, showing all</span>':'';
-  const rows=show.map(h=>'<div class="host'+(h.likely?' likely':'')+'" data-ip="'+h.ip+'"><b>'+h.ip+'</b><span>'+escHtml(h.name)+'</span>'+(h.mac?'<code>'+h.mac+'</code>':'')+(h.likely?'<em>likely Galileo</em>':'')+'</div>').join("");
+  const note=(galOnly && !gals.length)?' <span style="color:var(--warn)">— none matched, showing all</span>':'';
+  const rows=show.map(h=>'<div class="host'+(h.match?' likely':'')+'" data-ip="'+h.ip+'"><b>'+h.ip+'</b><span>'+escHtml(h.name)+'</span>'+(h.mac?'<code>'+h.mac+'</code>':'')+(h.match?'<em>'+escHtml(h.match)+'</em>':'')+'</div>').join("");
   box.innerHTML='<div class="hosthead">Found '+d.hosts.length+' device(s) on '+d.subnet+' &nbsp; '+tog+note+'</div>'+rows;
   $("galOnly").onchange=e=>{galOnly=e.target.checked;renderScan();};
   box.querySelectorAll(".host").forEach(el=>el.onclick=()=>{$("ip").value=el.dataset.ip;refresh();box.querySelectorAll(".host").forEach(x=>x.style.outline="");el.style.outline="2px solid var(--accent)";});
