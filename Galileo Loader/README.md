@@ -32,8 +32,8 @@ when you're done.*
   Add `--send` to transmit (without it you get a dry‑run preview).
 
 ## How to use
-1. In Live‑Capture, export filters: **Output tab → Export Selection** as text (a
-   "Biquad list", with `BW` in **Octaves**). Example: `../Exported EQ Curves/Live Room EQ.txt`.
+1. In Live‑Capture, export filters: **Output tab → Export Selection** as text
+   (a "Biquad list", with `BW` in **Octaves**). Save it anywhere convenient.
 2. Drop that file onto the app (or click to choose / paste it in).
 3. Set the Galileo **IP** and **port** (default `15006`) — or press
    **🔍 Find on network** to scan your subnet and click the right device.

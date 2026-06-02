@@ -20,7 +20,6 @@ Galileo Loader/
 ├─ Launch Galileo Loader.bat      ← double‑click launcher (Windows)
 ├─ README.md                   ← user‑facing usage & safety
 └─ PROJECT_SUMMARY.md          ← this file
-   (sample input: ../Exported EQ Curves/Live Room EQ.txt)
    (CI build: ../.github/workflows/build-galileo-loader.yml)
 ```
 
