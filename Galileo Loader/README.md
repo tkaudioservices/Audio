@@ -72,6 +72,11 @@ For each PEQ filter, three OSC messages:
 Bands are numbered from "First EQ band #" (default 1). Only **PEQ** filters are
 sent; other types are listed and skipped.
 
+Messages are **paced** — a small delay between each, plus a longer pause when
+the output number changes. This mirrors what the original *TXTtoG616* did, and
+keeps the Galileo from dropping packets (or crashing) when several outputs are
+loaded at once. A multi‑output send takes a second or two by design.
+
 ## Please read — safety
 - This changes EQ on a **live** loudspeaker processor. It never sends until you
   press **Send** / pass `--send`, and the browser always asks you to confirm.
@@ -80,9 +85,10 @@ sent; other types are listed and skipped.
   token guards the send/scan actions.
 
 ## Standalone Windows .exe (no Python needed)
-Pre‑built `GalileoLoader.exe` is published to the repo's **GitHub Releases** page
-(built automatically on Windows by a GitHub Action). Download it, double‑click,
-done — no Python install. Releases are cut by pushing a `galileo-loader-v*` tag.
+A pre‑built `GalileoLoader-v<version>.exe` is published to the repo's
+**GitHub Releases** page (built automatically on Windows by a GitHub Action).
+Download it, double‑click, done — no Python install. Releases are cut by
+pushing a `galileo-loader-v*` tag.
 
 ## Files in this folder
 - `galileo_loader.py` — the app (web UI + command line in one file)

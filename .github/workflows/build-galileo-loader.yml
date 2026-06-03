@@ -25,19 +25,29 @@ jobs:
       - name: Install PyInstaller
         run: pip install pyinstaller
 
-      - name: Build GalileoLoader.exe
-        run: pyinstaller --onefile --name GalileoLoader --add-data "tk_logo.png;." galileo_loader.py
+      - name: Extract version from ref
+        id: ver
+        shell: bash
+        run: |
+          # Tag push: galileo-loader-v0.3.0 -> v0.3.0
+          # Manual dispatch from a branch: main -> main
+          VER="${GITHUB_REF_NAME#galileo-loader-}"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "exe=GalileoLoader-${VER}" >> "$GITHUB_OUTPUT"
+
+      - name: Build ${{ steps.ver.outputs.exe }}.exe
+        run: pyinstaller --onefile --name "${{ steps.ver.outputs.exe }}" --add-data "tk_logo.png;." galileo_loader.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GalileoLoader-windows
-          path: 'Galileo Loader/dist/GalileoLoader.exe'
+          name: ${{ steps.ver.outputs.exe }}-windows
+          path: 'Galileo Loader/dist/${{ steps.ver.outputs.exe }}.exe'
           retention-days: 90
 
       - name: Publish to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: 'Galileo Loader/dist/GalileoLoader.exe'
+          files: 'Galileo Loader/dist/${{ steps.ver.outputs.exe }}.exe'
           generate_release_notes: true

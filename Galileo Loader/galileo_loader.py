@@ -42,6 +42,7 @@ import os
 import re
 import socket
 import struct
+import time
 import argparse
 import json
 import platform
@@ -51,10 +52,19 @@ import concurrent.futures
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-DEFAULT_IP = "192.168.1.171"
+__VERSION__ = "0.3.0"
+
+DEFAULT_IP = "192.168.1.171"            # CLI fallback (--ip). Web UI starts blank.
 DEFAULT_PORT = 15006
 ADDRESS_TEMPLATE = "/Output/{out}/EQ/{band}/Parametric/{param}"
-MAX_OUTPUTS = 16            # Galileo 616 = 6 in / 16 out
+MAX_OUTPUTS = 16                        # Galileo 616 = 6 in / 16 out
+
+# OSC send pacing -- the Galileo will drop messages and (we've seen) crash
+# above ~2 outputs at full speed, so we pace sends to match what the original
+# TXTtoG616 did. Bumping these values is the first thing to try if the unit
+# still misbehaves on larger sends.
+PACE_PER_MSG_MS = 5                     # between successive messages
+PACE_PER_OUTPUT_MS = 80                 # extra pause when /Output/<n>/ changes
 
 _TOKEN = ""
 _PAGE = ""
@@ -179,11 +189,29 @@ def build_messages(filters, outputs, start_band=1):
     return msgs
 
 
-def send_messages(messages, ip, port):
+_OUTPUT_RE = re.compile(r"^/Output/(\d+)/")
+
+
+def send_messages(messages, ip, port,
+                  per_msg_ms=PACE_PER_MSG_MS, per_output_ms=PACE_PER_OUTPUT_MS):
+    """Send OSC messages over UDP with pacing. Sleeps `per_msg_ms` between
+    every message and an extra `per_output_ms` whenever the /Output/<n>/
+    index changes. This is how the original TXTtoG616 sent: in per-output
+    sections, so the unit can drain its receive queue between blocks."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    per_msg = per_msg_ms / 1000.0
+    per_out = per_output_ms / 1000.0
     try:
+        prev_out = None
         for addr, val in messages:
+            m = _OUTPUT_RE.match(addr)
+            cur_out = m.group(1) if m else None
+            if prev_out is not None and cur_out != prev_out and per_out > 0:
+                time.sleep(per_out)
             sock.sendto(osc_message(addr, val), (ip, port))
+            if per_msg > 0:
+                time.sleep(per_msg)
+            prev_out = cur_out
     finally:
         sock.close()
     return len(messages)
@@ -280,7 +308,6 @@ def scan_network(settle=1.3):
     Sends a UDP probe to each subnet address to populate the ARP table, reads it,
     reverse-resolves names, and returns {subnet, mine, hosts:[{ip,name,mac,likely}]}.
     Cross-platform: Windows, macOS and Linux."""
-    import time
     mine = _local_ipv4()
     try:
         net = ipaddress.ip_network(mine + "/24", strict=False)
@@ -333,7 +360,7 @@ def scan_network(settle=1.3):
 def build_page(token):
     html = PAGE_TEMPLATE
     html = html.replace("__TOKEN__", token)
-    html = html.replace("__IP__", DEFAULT_IP)
+    html = html.replace("__VERSION__", __VERSION__)
     html = html.replace("__PORT__", str(DEFAULT_PORT))
     html = html.replace("__MAXOUT__", str(MAX_OUTPUTS))
     return html
@@ -545,6 +572,11 @@ PAGE_TEMPLATE = r"""<!DOCTYPE html>
   .host code{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
   .host em{margin-left:auto;font-style:normal;font-size:11px;font-weight:700;color:#fff;background:var(--good);padding:2px 8px;border-radius:20px}
   .host.likely{border-color:var(--good);background:#f0fbf5}
+  .host .sel{flex:0 0 auto;width:18px;height:18px;border:2px solid var(--line);border-radius:4px;background:#fff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;line-height:1;transition:background .08s,border-color .08s}
+  .host:hover .sel{border-color:var(--accent)}
+  .host.selected{border-color:var(--accent);background:#eaf7f9}
+  .host.selected .sel{background:var(--accent);border-color:var(--accent)}
+  .host.selected .sel::after{content:'✓'}
   .galtog{cursor:pointer;user-select:none}
   .galtog input{vertical-align:-1px}
   #eqcanvas{width:100%;height:200px;display:block}
@@ -569,7 +601,7 @@ PAGE_TEMPLATE = r"""<!DOCTYPE html>
   <div class="card">
     <h2>2 · Galileo target</h2>
     <div class="row">
-      <div class="fld"><label>IP address</label><input id="ip" class="ip" type="text" value="__IP__"></div>
+      <div class="fld"><label>IP address</label><input id="ip" class="ip" type="text" placeholder="e.g. 192.168.1.171"></div>
       <div class="fld"><label>UDP port</label><input id="port" class="num" type="number" value="__PORT__"></div>
       <div class="fld"><label>First EQ band #</label><input id="band" class="bnd" type="number" value="1" min="1"></div>
       <div class="fld"><label>&nbsp;</label><button class="ghost" id="scanBtn" type="button">🔍 Find on network</button></div>
@@ -600,7 +632,7 @@ PAGE_TEMPLATE = r"""<!DOCTYPE html>
 
   <footer class="foot">
     <img src="/logo.png" alt="" onerror="this.style.display='none'">
-    <span>Created by <b>tk Audio Services</b></span>
+    <span>Created by <b>tk Audio Services</b> &nbsp;·&nbsp; v__VERSION__</span>
   </footer>
 </div>
 <script>
@@ -766,10 +798,11 @@ function renderScan(){
   show=show.slice().sort((a,b)=>(b.match?1:0)-(a.match?1:0));
   const tog='<label class="galtog"><input type="checkbox" id="galOnly"'+(galOnly?' checked':'')+'> Galileos only</label>';
   const note=(galOnly && !gals.length)?' <span style="color:var(--warn)">— none matched, showing all</span>':'';
-  const rows=show.map(h=>'<div class="host'+(h.match?' likely':'')+'" data-ip="'+h.ip+'"><b>'+h.ip+'</b><span>'+escHtml(h.name)+'</span>'+(h.mac?'<code>'+h.mac+'</code>':'')+(h.match?'<em>'+escHtml(h.match)+'</em>':'')+'</div>').join("");
+  const selIp=$("ip").value.trim();
+  const rows=show.map(h=>'<div class="host'+(h.match?' likely':'')+(h.ip===selIp?' selected':'')+'" data-ip="'+h.ip+'"><span class="sel"></span><b>'+h.ip+'</b><span>'+escHtml(h.name)+'</span>'+(h.mac?'<code>'+h.mac+'</code>':'')+(h.match?'<em>'+escHtml(h.match)+'</em>':'')+'</div>').join("");
   box.innerHTML='<div class="hosthead">Found '+d.hosts.length+' device(s) on '+d.subnet+' &nbsp; '+tog+note+'</div>'+rows;
   $("galOnly").onchange=e=>{galOnly=e.target.checked;renderScan();};
-  box.querySelectorAll(".host").forEach(el=>el.onclick=()=>{$("ip").value=el.dataset.ip;refresh();box.querySelectorAll(".host").forEach(x=>x.style.outline="");el.style.outline="2px solid var(--accent)";});
+  box.querySelectorAll(".host").forEach(el=>el.onclick=()=>{$("ip").value=el.dataset.ip;refresh();box.querySelectorAll(".host").forEach(x=>x.classList.remove("selected"));el.classList.add("selected");});
 }
 $("scanBtn").onclick=async()=>{
   $("scanres").innerHTML='<div class="hosthead">Scanning your network… (a few seconds)</div>';

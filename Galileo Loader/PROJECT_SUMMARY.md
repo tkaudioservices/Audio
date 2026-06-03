@@ -34,7 +34,12 @@ Galileo Loader/
      auto‑detects which column is frequency / gain / bandwidth (freq = largest
      values, gain = the column that goes negative, bandwidth = the rest).
 3. **Build / send** — `build_messages` makes `(address, value)` pairs for each
-   selected output; `send_messages` fires them over a UDP socket.
+   selected output; `send_messages` fires them over a UDP socket, **paced**:
+   `PACE_PER_MSG_MS` between every message plus `PACE_PER_OUTPUT_MS` extra
+   whenever the `/Output/<n>/` index changes. The Galileo will silently drop
+   packets — and we've seen it crash — when >2 outputs are loaded back‑to‑back
+   at line rate, so this mirrors the per‑section pacing the original
+   *TXTtoG616* used. Bump the constants if a unit still misbehaves.
 4. **LAN discovery** — `scan_network`: UDP‑probes every address on the local /24 to
    populate the ARP cache, reads it (`arp -a` / `ip neigh`, parsed for the Windows,
    macOS and Linux formats), reverse‑resolves names, and flags likely Galileos by
@@ -73,9 +78,13 @@ Built automatically by GitHub Actions on `windows-latest`
   (e.g. `git tag galileo-loader-v0.2.0 && git push origin galileo-loader-v0.2.0`).
   The exe is attached to the matching GitHub Release.
 
-Pipeline: `pip install pyinstaller` → `pyinstaller --onefile --name GalileoLoader
---add-data "tk_logo.png;." galileo_loader.py`. No local Windows machine needed
-(exes can't be cross‑built from macOS, which is exactly why this lives in CI).
+Pipeline: `pip install pyinstaller` → `pyinstaller --onefile --name
+GalileoLoader-<ver> --add-data "tk_logo.png;." galileo_loader.py`. The
+`<ver>` is derived from the tag — `galileo-loader-v0.3.0` → `v0.3.0` →
+`GalileoLoader-v0.3.0.exe`. Manual `workflow_dispatch` runs from a branch
+get the branch name in place of the version (e.g. `GalileoLoader-main.exe`).
+No local Windows machine needed (exes can't be cross‑built from macOS, which
+is exactly why this lives in CI).
 
 ## Things that are reverse‑engineered (verify on hardware)
 - OSC addresses `/Output/<n>/EQ/<band>/Parametric/{Frequency,Bandwidth,Gain}` and
