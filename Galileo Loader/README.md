@@ -72,6 +72,13 @@ For each PEQ filter, three OSC messages:
 Bands are numbered from "First EQ band #" (default 1). Only **PEQ** filters are
 sent; other types are listed and skipped.
 
+**Every send is a full overwrite.** On each selected output, *all 10 bands*
+get written — bands with filter data get the new values, every other band is
+reset to flat (`0 dB`) at a neutral parking position (`1000 Hz`, `1.0 oct`).
+That way a 5‑band EQ sent on top of a previous 10‑band setup leaves no stale
+bands active. (Tunable in the script as `BANDS_PER_OUTPUT` if your unit has
+more or fewer than 10 PEQ bands per output.)
+
 Messages are **paced** — a small delay between each, plus a longer pause when
 the output number changes. This mirrors what the original *TXTtoG616* did, and
 keeps the Galileo from dropping packets (or crashing) when several outputs are

@@ -33,8 +33,14 @@ Galileo Loader/
    - **headerless** rows of three numbers (comma or space). `_columns_from_simple`
      auto‑detects which column is frequency / gain / bandwidth (freq = largest
      values, gain = the column that goes negative, bandwidth = the rest).
-3. **Build / send** — `build_messages` makes `(address, value)` pairs for each
-   selected output; `send_messages` fires them over a UDP socket, **paced**:
+3. **Build / send** — `build_messages` always writes **every** band on each
+   selected output (`BANDS_PER_OUTPUT`, default 10): bands holding filter data
+   get the filter values; bands without get the reset defaults
+   (`RESET_FREQ_HZ` / `RESET_BW_OCT` / `RESET_GAIN_DB` = 1000 Hz / 1.0 oct /
+   0 dB). 0 dB gain makes the band acoustically inert; freq/BW are just a
+   tidy parking position. This guarantees a send fully supersedes whatever EQ
+   the unit had before — no stale bands from a longer previous EQ stay active.
+   `send_messages` fires the messages over a UDP socket, **paced**:
    `PACE_PER_MSG_MS` between every message plus `PACE_PER_OUTPUT_MS` extra
    whenever the `/Output/<n>/` index changes. The Galileo will silently drop
    packets — and we've seen it crash — when >2 outputs are loaded back‑to‑back

@@ -52,12 +52,22 @@ import concurrent.futures
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-__VERSION__ = "0.3.1"
+__VERSION__ = "0.4.0"
 
 DEFAULT_IP = "192.168.1.171"            # CLI fallback (--ip). Web UI starts blank.
 DEFAULT_PORT = 15006
 ADDRESS_TEMPLATE = "/Output/{out}/EQ/{band}/Parametric/{param}"
 MAX_OUTPUTS = 16                        # Galileo 616 = 6 in / 16 out
+
+# Every send writes ALL bands on each selected output. Bands without filter
+# data are reset to the values below -- 0 dB gain makes them inert; the
+# freq/BW values are just a tidy parking position so they look "empty" in
+# Compass. This guarantees a clean overwrite: a 5-band EQ on top of a
+# previous 10-band setup leaves no stale bands active.
+BANDS_PER_OUTPUT = 10                   # Galaxy = 10 PEQ per output (legacy 616 may differ)
+RESET_FREQ_HZ = 1000.0
+RESET_BW_OCT = 1.0
+RESET_GAIN_DB = 0.0
 
 # OSC send pacing -- the Galileo will drop messages and (we've seen) crash
 # above ~2 outputs at full speed, so we pace sends to match what the original
@@ -177,15 +187,27 @@ def peq_filters(filters):
     return [f for f in filters if f["type"].upper() == "PEQ"]
 
 
-def build_messages(filters, outputs, start_band=1):
+def build_messages(filters, outputs, start_band=1, bands_per_output=BANDS_PER_OUTPUT):
+    """Build OSC messages for a full overwrite. Every selected output gets
+    exactly `bands_per_output` bands written: bands receiving filter data get
+    the filter values; everything else gets the reset defaults (0 dB gain).
+    That way a fresh send fully supersedes whatever EQ the unit had before --
+    no leftover bands from a longer previous EQ stay active."""
     msgs = []
+    peqs = peq_filters(filters)
+    reset = (RESET_FREQ_HZ, RESET_BW_OCT, RESET_GAIN_DB)
     for out in outputs:
-        for idx, f in enumerate(peq_filters(filters)):
+        per_band = {b: reset for b in range(1, bands_per_output + 1)}
+        for idx, f in enumerate(peqs):
             band = start_band + idx
+            if 1 <= band <= bands_per_output:
+                per_band[band] = (f["freq"], f["bw"], f["gain"])
+        for band in range(1, bands_per_output + 1):
+            freq, bw, gain = per_band[band]
             base = dict(out=out, band=band)
-            msgs.append((ADDRESS_TEMPLATE.format(param="Frequency", **base), f["freq"]))
-            msgs.append((ADDRESS_TEMPLATE.format(param="Bandwidth", **base), f["bw"]))
-            msgs.append((ADDRESS_TEMPLATE.format(param="Gain", **base), f["gain"]))
+            msgs.append((ADDRESS_TEMPLATE.format(param="Frequency", **base), freq))
+            msgs.append((ADDRESS_TEMPLATE.format(param="Bandwidth", **base), bw))
+            msgs.append((ADDRESS_TEMPLATE.format(param="Gain", **base), gain))
     return msgs
 
 
@@ -363,6 +385,7 @@ def build_page(token):
     html = html.replace("__VERSION__", __VERSION__)
     html = html.replace("__PORT__", str(DEFAULT_PORT))
     html = html.replace("__MAXOUT__", str(MAX_OUTPUTS))
+    html = html.replace("__BANDS__", str(BANDS_PER_OUTPUT))
     return html
 
 
@@ -613,6 +636,7 @@ PAGE_TEMPLATE = r"""<!DOCTYPE html>
       <label style="font-size:12px;color:var(--muted)">Send to outputs</label>
       <div id="chips" class="chips"></div>
       <button class="mini" id="allBtn">All</button><button class="mini" id="noneBtn">None</button>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">Each selected output gets all __BANDS__ bands written. Bands without filter data are reset to flat (0 dB) so the send fully overwrites any prior EQ.</div>
     </div>
   </div>
 
@@ -638,7 +662,8 @@ PAGE_TEMPLATE = r"""<!DOCTYPE html>
   </footer>
 </div>
 <script>
-const TOKEN="__TOKEN__", MAXOUT=__MAXOUT__;
+const TOKEN="__TOKEN__", MAXOUT=__MAXOUT__, BANDS=__BANDS__;
+const RESET_FREQ=1000.0, RESET_BW=1.0, RESET_GAIN=0.0;
 let FILTERS=[], NAME="galileo";
 const $=id=>document.getElementById(id);
 const outs=new Set();
@@ -691,11 +716,24 @@ function parseBiquad(text){
   return {meta,filters,warnings};
 }
 function buildMessages(){
-  const start=parseInt($("band").value)||1, peqs=FILTERS.filter(f=>f.type.toUpperCase()==="PEQ"), m=[];
-  for(const o of [...outs].sort((a,b)=>a-b)) peqs.forEach((f,i)=>{
-    const band=start+i, a="/Output/"+o+"/EQ/"+band+"/Parametric/";
-    m.push([a+"Frequency",f.freq]); m.push([a+"Bandwidth",f.bw]); m.push([a+"Gain",f.gain]);
-  });
+  // Mirror of Python build_messages: every selected output gets all BANDS
+  // bands written, with reset defaults filling slots that have no filter
+  // data. Keeps preview and wire output identical.
+  const start=parseInt($("band").value)||1;
+  const peqs=FILTERS.filter(f=>f.type.toUpperCase()==="PEQ");
+  const m=[];
+  for(const o of [...outs].sort((a,b)=>a-b)){
+    const perBand={};
+    for(let b=1;b<=BANDS;b++) perBand[b]={freq:RESET_FREQ,bw:RESET_BW,gain:RESET_GAIN};
+    peqs.forEach((f,i)=>{
+      const band=start+i;
+      if(band>=1 && band<=BANDS) perBand[band]={freq:f.freq,bw:f.bw,gain:f.gain};
+    });
+    for(let b=1;b<=BANDS;b++){
+      const f=perBand[b], a="/Output/"+o+"/EQ/"+b+"/Parametric/";
+      m.push([a+"Frequency",f.freq]); m.push([a+"Bandwidth",f.bw]); m.push([a+"Gain",f.gain]);
+    }
+  }
   return m;
 }
 // --- EQ response curve (sum of RBJ peaking biquads) ---
