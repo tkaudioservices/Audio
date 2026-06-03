@@ -52,7 +52,7 @@ import concurrent.futures
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-__VERSION__ = "0.3.0"
+__VERSION__ = "0.3.1"
 
 DEFAULT_IP = "192.168.1.171"            # CLI fallback (--ip). Web UI starts blank.
 DEFAULT_PORT = 15006
@@ -157,7 +157,7 @@ def parse_biquad(text):
         filters = structured
     elif simple:
         filters, order = _columns_from_simple(simple)
-        warnings.append("Headerless list detected -- columns read as %s. Check the preview." % order)
+        meta["order"] = order        # surfaced as info, not a warning -- the file parsed cleanly
     else:
         filters = []
         warnings.append("No filter rows found -- expected a WaveCapture biquad list, or rows of "
@@ -495,8 +495,10 @@ def run_cli(argv):
 
     print("Galileo Loader  ·  tk Audio Services")
     print("File        : %s" % os.path.basename(args.file))
-    if meta:
+    if meta.get("eq_type") or meta.get("bw_type"):
         print("EQ type     : %s   BW type: %s" % (meta.get("eq_type", "?"), meta.get("bw_type", "?")))
+    if meta.get("order"):
+        print("Headerless  : columns read as %s" % meta["order"])
     print("PEQ filters : %d" % len(peq_filters(filters)))
     print("Outputs     : %s" % ", ".join(map(str, outputs)))
     print("Target      : %s:%d" % (args.ip, args.port))
@@ -678,8 +680,7 @@ function parseBiquad(text){
   let filters=[];
   if(structured.length) filters=structured;
   else if(simple.length){
-    const r=columnsFromSimple(simple); filters=r.filters;
-    warnings.push("Headerless list detected — columns read as "+r.order+". Check the preview.");
+    const r=columnsFromSimple(simple); filters=r.filters; meta.order=r.order;
   } else {
     warnings.push("No filter rows found — expected a WaveCapture biquad list, or rows of frequency / gain / bandwidth.");
   }
@@ -739,7 +740,7 @@ function refresh(){
 function loadText(text,name){
   const r=parseBiquad(text); FILTERS=r.filters; if(name) NAME=name.replace(/\.[^.]*$/,"");
   const n=FILTERS.filter(f=>f.type.toUpperCase()==="PEQ").length;
-  $("meta").textContent = n+" PEQ filter(s)"+(r.meta.eq?("   ·   EQ: "+r.meta.eq):"")+(r.meta.bw?("   ·   BW: "+r.meta.bw):"");
+  $("meta").textContent = n+" PEQ filter(s)"+(r.meta.eq?("   ·   EQ: "+r.meta.eq):"")+(r.meta.bw?("   ·   BW: "+r.meta.bw):"")+(r.meta.order?("   ·   headerless: "+r.meta.order):"");
   $("warns").innerHTML = r.warnings.map(w=>'<div class="warn">'+w+'</div>').join("");
   refresh(); drawEQ();
 }
