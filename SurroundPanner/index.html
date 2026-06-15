@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SurroundPanner — immersive object control surface</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171c22; --panel2:#1e242c; --line:#2a323c;
+    --txt:#e6edf3; --dim:#8b97a3; --accent:#39c0ed; --accent2:#7ee787;
+    --warn:#f0883e; --bad:#f85149; --obj:#39c0ed;
+    --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--txt);font-family:var(--ui);font-size:13px;overflow:hidden}
+  button,input,select{font-family:inherit;font-size:12px}
+  .topbar{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .topbar .brand{font-weight:700;letter-spacing:.5px;color:var(--accent)}
+  .topbar .brand small{color:var(--dim);font-weight:400;letter-spacing:0}
+  .topbar input.title{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:5px;padding:5px 8px;width:200px}
+  .spacer{flex:1}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:5px;padding:6px 10px;cursor:pointer}
+  .btn:hover{border-color:var(--accent);color:#fff}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#04222c;font-weight:600}
+  .btn.toggle.on{background:var(--accent);border-color:var(--accent);color:#04222c}
+  .status{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--bad)}
+  .dot.ok{background:var(--accent2)}
+  .layout{display:flex;height:calc(100% - 49px)}
+  .views{flex:1;display:flex;flex-direction:column;min-width:0;padding:10px;gap:10px}
+  .viewbox{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .viewbox .label{position:absolute;top:8px;left:10px;font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:1px;pointer-events:none}
+  #topView{flex:3}
+  #frontView{flex:1;min-height:120px}
+  canvas{display:block;width:100%;height:100%}
+  .side{width:340px;background:var(--panel);border-left:1px solid var(--line);overflow-y:auto}
+  .sect{border-bottom:1px solid var(--line)}
+  .sect h3{margin:0;padding:10px 12px;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none}
+  .sect h3 .chev{transition:transform .15s}
+  .sect.collapsed h3 .chev{transform:rotate(-90deg)}
+  .sect .body{padding:6px 12px 12px}
+  .sect.collapsed .body{display:none}
+  .row{display:flex;align-items:center;gap:8px;margin:6px 0}
+  .row label{width:74px;color:var(--dim);flex:none}
+  .row input[type=text],.row input[type=number],.row select{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:4px;padding:5px 6px;min-width:0}
+  .row input[type=range]{flex:1}
+  .row .val{width:46px;text-align:right;font-family:var(--mono);color:var(--accent);flex:none}
+  .list{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
+  .item{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--panel2);border:1px solid var(--line);border-radius:5px;cursor:pointer}
+  .item.sel{border-color:var(--accent)}
+  .item .sw{width:12px;height:12px;border-radius:3px;flex:none}
+  .item .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .item .meta{font-family:var(--mono);font-size:10px;color:var(--dim)}
+  .item .x{color:var(--dim);padding:0 2px}
+  .item .x:hover{color:var(--bad)}
+  .mini{display:flex;gap:6px;margin:6px 0}
+  .mini .btn{flex:1;text-align:center;padding:6px}
+  .hint{color:var(--dim);font-size:11px;line-height:1.5;margin:4px 0}
+  .kbd{font-family:var(--mono);background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:1px 5px;color:var(--txt)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .pill{font-family:var(--mono);font-size:10px;color:var(--dim)}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="brand">SurroundPanner <small>· tk Audio Services</small></span>
+  <input class="title" id="projName" value="Untitled show" title="Project name">
+  <button class="btn toggle on" id="modeObjects">Move objects</button>
+  <button class="btn toggle" id="modeRoom">Edit room</button>
+  <span class="spacer"></span>
+  <button class="btn" id="btnExport">Export</button>
+  <button class="btn" id="btnImport">Import</button>
+  <input type="file" id="fileImport" accept="application/json" style="display:none">
+  <div class="status"><span class="dot" id="connDot"></span><span id="connTxt">bridge offline</span></div>
+</div>
+
+<div class="layout">
+  <div class="views">
+    <div class="viewbox" id="topView"><span class="label">TOP — X (L/R) · Y (FRONT/REAR)</span><canvas id="cTop"></canvas></div>
+    <div class="viewbox" id="frontView"><span class="label">FRONT — X (L/R) · Z (HEIGHT)</span><canvas id="cFront"></canvas></div>
+  </div>
+
+  <div class="side">
+    <!-- OBJECTS -->
+    <div class="sect" id="sObjects">
+      <h3>Objects <span class="chev">▾</span></h3>
+      <div class="body">
+        <div class="list" id="objList"></div>
+        <div class="mini">
+          <button class="btn" id="addObj">+ Add object</button>
+        </div>
+        <div id="objEditor" style="display:none">
+          <div class="row"><label>Name</label><input type="text" id="oName"></div>
+          <div class="row"><label>X · L/R</label><input type="range" id="oX" min="-1" max="1" step="0.001"><span class="val" id="oXv">0</span></div>
+          <div class="row"><label>Y · F/R</label><input type="range" id="oY" min="-1" max="1" step="0.001"><span class="val" id="oYv">0</span></div>
+          <div class="row"><label>Z · Height</label><input type="range" id="oZ" min="0" max="1" step="0.001"><span class="val" id="oZv">0</span></div>
+          <div class="row"><label>Gain</label><input type="range" id="oG" min="0" max="1" step="0.001"><span class="val" id="oGv">1.0</span></div>
+          <h3 style="cursor:default;padding-left:0">OSC mapping → REAPER</h3>
+          <div class="hint">Sends normalised 0–1 to <span class="kbd">/track/&lt;t&gt;/fx/&lt;f&gt;/fxparam/&lt;p&gt;/value</span>. Find param indices in REAPER by toggling the plugin's <span class="kbd">UI</span> button.</div>
+          <div class="grid2">
+            <div class="row"><label>Track</label><input type="number" id="oT" min="1" step="1"></div>
+            <div class="row"><label>FX</label><input type="number" id="oF" min="1" step="1"></div>
+            <div class="row"><label>X param</label><input type="number" id="oPX" min="0" step="1"></div>
+            <div class="row"><label>Y param</label><input type="number" id="oPY" min="0" step="1"></div>
+            <div class="row"><label>Z param</label><input type="number" id="oPZ" min="0" step="1"></div>
+            <div class="row"><label>Gain param</label><input type="number" id="oPG" min="0" step="1"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROOM -->
+    <div class="sect collapsed" id="sRoom">
+      <h3>Room &amp; speakers <span class="chev">▾</span></h3>
+      <div class="body">
+        <div class="row"><label>Preset</label>
+          <select id="preset">
+            <option value="">— load preset —</option>
+            <option value="stereo">Stereo</option>
+            <option value="quad">Quad</option>
+            <option value="5.1">5.1</option>
+            <option value="7.1">7.1</option>
+            <option value="7.1.4">7.1.4 (Atmos)</option>
+            <option value="isa">L-ISA-style frontal scene</option>
+          </select>
+        </div>
+        <div class="grid2">
+          <div class="row"><label>Width m</label><input type="number" id="rW" min="1" step="0.1" value="10"></div>
+          <div class="row"><label>Depth m</label><input type="number" id="rD" min="1" step="0.1" value="10"></div>
+          <div class="row"><label>Height m</label><input type="number" id="rH" min="1" step="0.1" value="4"></div>
+        </div>
+        <div class="hint">In <b>Edit room</b> mode: drag speakers in the views, or click empty space in the top view to add one. Select a speaker to edit its name/position.</div>
+        <div class="list" id="spkList"></div>
+        <div class="mini"><button class="btn" id="addSpk">+ Add speaker</button><button class="btn" id="clrSpk">Clear all</button></div>
+        <div id="spkEditor" style="display:none">
+          <div class="row"><label>Name</label><input type="text" id="sName"></div>
+          <div class="grid2">
+            <div class="row"><label>X</label><input type="number" id="sX" min="-1" max="1" step="0.01"></div>
+            <div class="row"><label>Y</label><input type="number" id="sY" min="-1" max="1" step="0.01"></div>
+            <div class="row"><label>Z</label><input type="number" id="sZ" min="0" max="1" step="0.01"></div>
+            <div class="row"><label>Out ch</label><input type="number" id="sCh" min="1" step="1"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANNER -->
+    <div class="sect collapsed" id="sPanner">
+      <h3>Panner law <span class="chev">▾</span></h3>
+      <div class="body">
+        <div class="hint">DBAP (distance-based amplitude panning): every object feeds every speaker, weighted by distance, constant-power normalised. The latch lines show which speakers actually carry the signal.</div>
+        <div class="row"><label>Rolloff</label><input type="range" id="pRoll" min="0.5" max="4" step="0.1"><span class="val" id="pRollv">2.0</span></div>
+        <div class="row"><label>Blur</label><input type="range" id="pBlur" min="0.001" max="0.6" step="0.001"><span class="val" id="pBlurv">0.10</span></div>
+        <div class="row"><label>Line cut</label><input type="range" id="pThr" min="0.01" max="0.5" step="0.01"><span class="val" id="pThrv">0.08</span></div>
+      </div>
+    </div>
+
+    <!-- CONNECTION -->
+    <div class="sect collapsed" id="sConn">
+      <h3>REAPER connection <span class="chev">▾</span></h3>
+      <div class="body">
+        <div class="row"><label>Bridge URL</label><input type="text" id="bUrl" value="http://localhost:9000"></div>
+        <div class="mini"><button class="btn primary" id="btnConnect">Connect / test</button></div>
+        <div class="hint" id="connHint">Run the Python bridge (<span class="kbd">reaper_bridge.py</span>), then click connect. The bridge relays positions to REAPER over OSC. While disconnected, everything still works for design — only the live link is off.</div>
+        <div class="row"><label>Send rate</label><input type="range" id="bRate" min="10" max="60" step="5"><span class="val" id="bRatev">30</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+//============================================================ helpers
+const $ = id => document.getElementById(id);
+const clamp = (v,a=-1,b=1)=>Math.max(a,Math.min(b,v));
+const map = (v,a,b,c,d)=> c + (v-a)*(d-c)/(b-a);
+const uid = ()=> Math.random().toString(36).slice(2,9);
+const PAD = 36;
+const PALETTE = ['#39c0ed','#7ee787','#f0883e','#f778ba','#d2a8ff','#ffdf5d','#56d4dd','#ff9492'];
+
+//============================================================ state
+let state = {
+  project:"Untitled show",
+  room:{w:10,d:10,h:4},
+  speakers:[],
+  objects:[],
+  panner:{rolloff:2.0, blur:0.10, threshold:0.08},
+  bridge:{url:"http://localhost:9000", connected:false, rate:30},
+  selObj:null, selSpk:null, mode:"objects"
+};
+
+//============================================================ presets (x:-1..1 L/R, y:-1..1 rear..front, z:0..1)
+const PRESETS = {
+  stereo:[['L',-0.7,1,0],['R',0.7,1,0]],
+  quad:[['L',-0.8,0.9,0],['R',0.8,0.9,0],['Ls',-0.8,-0.9,0],['Rs',0.8,-0.9,0]],
+  '5.1':[['L',-0.8,1,0],['C',0,1,0],['R',0.8,1,0],['Ls',-0.9,-0.8,0],['Rs',0.9,-0.8,0]],
+  '7.1':[['L',-0.8,1,0],['C',0,1,0],['R',0.8,1,0],['Lss',-1,0,0],['Rss',1,0,0],['Lsr',-0.7,-1,0],['Rsr',0.7,-1,0]],
+  '7.1.4':[['L',-0.8,1,0],['C',0,1,0],['R',0.8,1,0],['Lss',-1,0,0],['Rss',1,0,0],['Lsr',-0.7,-1,0],['Rsr',0.7,-1,0],
+           ['Ltf',-0.6,0.6,1],['Rtf',0.6,0.6,1],['Ltr',-0.6,-0.6,1],['Rtr',0.6,-0.6,1]],
+  isa:[['A1',-1,1,0.2],['A2',-0.6,1,0.2],['A3',-0.2,1,0.2],['A4',0.2,1,0.2],['A5',0.6,1,0.2],['A6',1,1,0.2],
+       ['Ls',-1,-0.2,0.1],['Rs',1,-0.2,0.1],['Lr',-0.5,-1,0.1],['Rr',0.5,-1,0.1],
+       ['Lt',-0.5,0.4,1],['Rt',0.5,0.4,1]]
+};
+function loadPreset(name){
+  const p = PRESETS[name]; if(!p) return;
+  state.speakers = p.map((s,i)=>({id:uid(), name:s[0], x:s[1], y:s[2], z:s[3], ch:i+1}));
+  state.selSpk = null;
+  renderAll();
+}
+
+//============================================================ DBAP panning
+function computeGains(obj){
+  const eps = state.panner.blur;
+  const raw = state.speakers.map(s=>{
+    const dx=obj.x-s.x, dy=obj.y-s.y, dz=(obj.z-s.z);
+    const d = Math.sqrt(dx*dx+dy*dy+dz*dz) + eps;
+    return 1/Math.pow(d, state.panner.rolloff);
+  });
+  const sumSq = raw.reduce((a,g)=>a+g*g,0);
+  const norm = Math.sqrt(sumSq)||1;
+  return raw.map(g=>(g/norm)*obj.gain);
+}
+
+//============================================================ canvas
+const cTop=$('cTop'), cFront=$('cFront');
+const ctxT=cTop.getContext('2d'), ctxF=cFront.getContext('2d');
+function fit(cv){ const r=cv.parentElement.getBoundingClientRect(); const dpr=window.devicePixelRatio||1;
+  cv.width=Math.max(1,r.width*dpr); cv.height=Math.max(1,r.height*dpr); const c=cv.getContext('2d'); c.setTransform(dpr,0,0,dpr,0,0); return {w:r.width,h:r.height}; }
+
+// top: x:-1..1 -> [PAD,w-PAD]; y:+1(front)..-1(rear) -> [PAD,h-PAD]
+function topXY(x,y,w,h){ return [map(x,-1,1,PAD,w-PAD), map(y,1,-1,PAD,h-PAD)]; }
+function topInv(sx,sy,w,h){ return [clamp(map(sx,PAD,w-PAD,-1,1)), clamp(map(sy,PAD,h-PAD,1,-1))]; }
+// front: x:-1..1 -> [PAD,w-PAD]; z:0(floor)..1(ceil) -> [h-PAD,PAD]
+function frontXZ(x,z,w,h){ return [map(x,-1,1,PAD,w-PAD), map(z,0,1,h-PAD,PAD)]; }
+function frontInv(sx,sz,w,h){ return [clamp(map(sx,PAD,w-PAD,-1,1)), clamp(map(sz,h-PAD,PAD,0,1),0,1)]; }
+
+function drawGrid(ctx,w,h){
+  ctx.fillStyle='#0c0f13'; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle='#202833'; ctx.lineWidth=1;
+  ctx.strokeRect(PAD,PAD,w-2*PAD,h-2*PAD);
+  ctx.beginPath();
+  ctx.moveTo(w/2,PAD); ctx.lineTo(w/2,h-PAD);
+  ctx.moveTo(PAD,h/2); ctx.lineTo(w-PAD,h/2);
+  ctx.stroke();
+}
+function drawSpeaker(ctx,sx,sy,name,sel){
+  ctx.fillStyle = sel?'#fff':'#9fb0c0';
+  ctx.fillRect(sx-5,sy-5,10,10);
+  ctx.strokeStyle = sel?'var(--accent)':'#2a323c';
+  ctx.fillStyle='#7f8c99'; ctx.font='10px '+getComputedStyle(document.body).getPropertyValue('--mono');
+  ctx.fillText(name, sx+8, sy+3);
+}
+
+function render(){
+  const T=fit(cTop), F=fit(cFront);
+  // TOP VIEW
+  drawGrid(ctxT,T.w,T.h);
+  // latch lines
+  state.objects.forEach(o=>{
+    const g=computeGains(o); const [ox,oy]=topXY(o.x,o.y,T.w,T.h);
+    state.speakers.forEach((s,i)=>{ if(g[i]<state.panner.threshold) return;
+      const [sx,sy]=topXY(s.x,s.y,T.w,T.h);
+      ctxT.strokeStyle=o.color; ctxT.globalAlpha=Math.min(1,g[i]); ctxT.lineWidth=Math.max(0.5,g[i]*4);
+      ctxT.beginPath(); ctxT.moveTo(ox,oy); ctxT.lineTo(sx,sy); ctxT.stroke();
+    });
+    ctxT.globalAlpha=1;
+  });
+  // speakers
+  state.speakers.forEach(s=>{ const [sx,sy]=topXY(s.x,s.y,T.w,T.h); drawSpeaker(ctxT,sx,sy,s.name, s.id===state.selSpk); });
+  // objects
+  state.objects.forEach(o=>{ const [ox,oy]=topXY(o.x,o.y,T.w,T.h);
+    ctxT.beginPath(); ctxT.arc(ox,oy,o.id===state.selObj?9:7,0,7); ctxT.fillStyle=o.color; ctxT.fill();
+    if(o.id===state.selObj){ ctxT.strokeStyle='#fff'; ctxT.lineWidth=2; ctxT.stroke(); }
+    ctxT.fillStyle='#0c0f13'; ctxT.font='bold 9px sans-serif'; ctxT.textAlign='center'; ctxT.textBaseline='middle';
+    ctxT.fillText((state.objects.indexOf(o)+1), ox, oy); ctxT.textAlign='start'; ctxT.textBaseline='alphabetic';
+  });
+
+  // FRONT VIEW (x vs z)
+  drawGrid(ctxF,F.w,F.h);
+  state.objects.forEach(o=>{
+    const g=computeGains(o); const [ox,oz]=frontXZ(o.x,o.z,F.w,F.h);
+    state.speakers.forEach((s,i)=>{ if(g[i]<state.panner.threshold) return;
+      const [sx,sz]=frontXZ(s.x,s.z,F.w,F.h);
+      ctxF.strokeStyle=o.color; ctxF.globalAlpha=Math.min(1,g[i]); ctxF.lineWidth=Math.max(0.5,g[i]*3);
+      ctxF.beginPath(); ctxF.moveTo(ox,oz); ctxF.lineTo(sx,sz); ctxF.stroke();
+    }); ctxF.globalAlpha=1;
+  });
+  state.speakers.forEach(s=>{ const [sx,sz]=frontXZ(s.x,s.z,F.w,F.h); drawSpeaker(ctxF,sx,sz,s.name, s.id===state.selSpk); });
+  state.objects.forEach(o=>{ const [ox,oz]=frontXZ(o.x,o.z,F.w,F.h);
+    ctxF.beginPath(); ctxF.arc(ox,oz,o.id===state.selObj?8:6,0,7); ctxF.fillStyle=o.color; ctxF.fill();
+    if(o.id===state.selObj){ ctxF.strokeStyle='#fff'; ctxF.lineWidth=2; ctxF.stroke(); }
+  });
+}
+
+//============================================================ interaction
+function pick(list, x, y, mapper, w, h, rad=12){
+  let best=null, bd=rad;
+  list.forEach(it=>{ const [px,py]=mapper(it); const dd=Math.hypot(px-x,py-y); if(dd<bd){bd=dd;best=it;} });
+  return best;
+}
+function bindCanvas(cv, ctx, kind){
+  let dragging=null;
+  const rect=()=>cv.getBoundingClientRect();
+  cv.addEventListener('mousedown', e=>{
+    const r=rect(), w=r.width, h=r.height, mx=e.clientX-r.left, my=e.clientY-r.top;
+    const mapO = kind==='top' ? o=>topXY(o.x,o.y,w,h) : o=>frontXZ(o.x,o.z,w,h);
+    const mapS = kind==='top' ? s=>topXY(s.x,s.y,w,h) : s=>frontXZ(s.x,s.z,w,h);
+    if(state.mode==='objects'){
+      const o=pick(state.objects,mx,my,mapO,w,h); if(o){ selectObject(o.id); dragging={type:'obj',item:o}; }
+    } else {
+      const s=pick(state.speakers,mx,my,mapS,w,h);
+      if(s){ selectSpeaker(s.id); dragging={type:'spk',item:s}; }
+      else if(kind==='top'){ const [x,y]=topInv(mx,my,w,h); const ns={id:uid(),name:'Spk'+(state.speakers.length+1),x,y,z:0,ch:state.speakers.length+1}; state.speakers.push(ns); selectSpeaker(ns.id); dragging={type:'spk',item:ns}; renderLists(); }
+    }
+    render();
+  });
+  window.addEventListener('mousemove', e=>{
+    if(!dragging) return;
+    const r=rect(), w=r.width, h=r.height, mx=e.clientX-r.left, my=e.clientY-r.top;
+    const it=dragging.item;
+    if(kind==='top'){ const [x,y]=topInv(mx,my,w,h); it.x=x; it.y=y; }
+    else { const [x,z]=frontInv(mx,my,w,h); it.x=x; it.z=z; }
+    if(dragging.type==='obj'){ syncObjEditor(); scheduleSend(it); }
+    else syncSpkEditor();
+    render();
+  });
+  window.addEventListener('mouseup', ()=>{ if(dragging&&dragging.type==='obj') sendObject(dragging.item); dragging=null; });
+}
+
+//============================================================ OSC send (throttled)
+let sendTimer=0, pending=null;
+function scheduleSend(o){ pending=o; const gap=1000/state.bridge.rate; const now=performance.now();
+  if(now-sendTimer>gap){ sendTimer=now; sendObject(o); } }
+async function sendObject(o){
+  if(!state.bridge.connected || !o.osc) return;
+  const m=o.osc, msgs=[];
+  const add=(p,v)=>{ if(p!==''&&p!=null&&!isNaN(p)) msgs.push({addr:`/track/${m.track}/fx/${m.fx}/fxparam/${p}/value`, value:v}); };
+  add(m.px,(o.x+1)/2); add(m.py,(o.y+1)/2); add(m.pz,o.z); add(m.pg,o.gain);
+  if(!msgs.length) return;
+  try{ await fetch(state.bridge.url+'/osc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs})}); }
+  catch(err){ setConn(false); }
+}
+
+//============================================================ object / speaker CRUD
+function addObject(){
+  const i=state.objects.length;
+  const o={id:uid(), name:'Object '+(i+1), x:0,y:0,z:0, gain:1, color:PALETTE[i%PALETTE.length],
+           osc:{track:i+1, fx:1, px:0, py:1, pz:2, pg:''}};
+  state.objects.push(o); selectObject(o.id); renderAll();
+}
+function delObject(id){ state.objects=state.objects.filter(o=>o.id!==id); if(state.selObj===id)state.selObj=null; renderAll(); }
+function selectObject(id){ state.selObj=id; state.selSpk=null; syncObjEditor(); renderLists(); }
+function addSpeaker(){ const i=state.speakers.length; const s={id:uid(),name:'Spk'+(i+1),x:0,y:0,z:0,ch:i+1}; state.speakers.push(s); selectSpeaker(s.id); renderAll(); }
+function delSpeaker(id){ state.speakers=state.speakers.filter(s=>s.id!==id); if(state.selSpk===id)state.selSpk=null; renderAll(); }
+function selectSpeaker(id){ state.selSpk=id; syncSpkEditor(); renderLists(); }
+
+//============================================================ editors <-> state
+function syncObjEditor(){
+  const o=state.objects.find(x=>x.id===state.selObj);
+  $('objEditor').style.display = o?'block':'none'; if(!o) return;
+  $('oName').value=o.name;
+  $('oX').value=o.x; $('oXv').textContent=o.x.toFixed(2);
+  $('oY').value=o.y; $('oYv').textContent=o.y.toFixed(2);
+  $('oZ').value=o.z; $('oZv').textContent=o.z.toFixed(2);
+  $('oG').value=o.gain; $('oGv').textContent=o.gain.toFixed(2);
+  $('oT').value=o.osc.track; $('oF').value=o.osc.fx;
+  $('oPX').value=o.osc.px; $('oPY').value=o.osc.py; $('oPZ').value=o.osc.pz; $('oPG').value=o.osc.pg;
+}
+function syncSpkEditor(){
+  const s=state.speakers.find(x=>x.id===state.selSpk);
+  $('spkEditor').style.display = s?'block':'none'; if(!s) return;
+  $('sName').value=s.name; $('sX').value=s.x.toFixed(2); $('sY').value=s.y.toFixed(2); $('sZ').value=s.z.toFixed(2); $('sCh').value=s.ch;
+}
+function renderLists(){
+  // objects
+  const ol=$('objList'); ol.innerHTML='';
+  state.objects.forEach((o,i)=>{ const d=document.createElement('div'); d.className='item'+(o.id===state.selObj?' sel':'');
+    d.innerHTML=`<span class="sw" style="background:${o.color}"></span><span class="nm">${i+1}. ${o.name}</span><span class="meta">T${o.osc.track}</span><span class="x">✕</span>`;
+    d.onclick=e=>{ if(e.target.classList.contains('x')){delObject(o.id);} else selectObject(o.id); };
+    ol.appendChild(d); });
+  // speakers
+  const sl=$('spkList'); sl.innerHTML='';
+  state.speakers.forEach(s=>{ const d=document.createElement('div'); d.className='item'+(s.id===state.selSpk?' sel':'');
+    d.innerHTML=`<span class="nm">${s.name}</span><span class="meta">${s.x.toFixed(1)},${s.y.toFixed(1)},${s.z.toFixed(1)} · ch${s.ch}</span><span class="x">✕</span>`;
+    d.onclick=e=>{ if(e.target.classList.contains('x')){delSpeaker(s.id);} else selectSpeaker(s.id); };
+    sl.appendChild(d); });
+}
+function renderAll(){ renderLists(); syncObjEditor(); syncSpkEditor(); render(); }
+
+//============================================================ wire up inputs
+function num(el){ const v=parseFloat(el.value); return isNaN(v)?0:v; }
+$('oName').oninput=e=>{ const o=cur(); if(o){o.name=e.target.value; renderLists();} };
+['oX','oY','oZ','oG'].forEach(id=>$(id).oninput=e=>{ const o=cur(); if(!o)return; const v=parseFloat(e.target.value);
+  if(id==='oX')o.x=v; if(id==='oY')o.y=v; if(id==='oZ')o.z=v; if(id==='oG')o.gain=v;
+  $(id+'v').textContent=v.toFixed(2); scheduleSend(o); render(); });
+['oX','oY','oZ','oG'].forEach(id=>$(id).onchange=()=>{ const o=cur(); if(o)sendObject(o); });
+const oscMap={oT:'track',oF:'fx',oPX:'px',oPY:'py',oPZ:'pz',oPG:'pg'};
+Object.keys(oscMap).forEach(id=>$(id).oninput=e=>{ const o=cur(); if(!o)return; const raw=e.target.value;
+  o.osc[oscMap[id]] = raw===''?'':parseInt(raw,10); renderLists(); });
+function cur(){ return state.objects.find(x=>x.id===state.selObj); }
+
+$('sName').oninput=e=>{ const s=curS(); if(s){s.name=e.target.value; renderLists(); render();} };
+['sX','sY','sZ','sCh'].forEach(id=>$(id).oninput=e=>{ const s=curS(); if(!s)return; const v=parseFloat(e.target.value);
+  if(id==='sX')s.x=v; if(id==='sY')s.y=v; if(id==='sZ')s.z=v; if(id==='sCh')s.ch=v; renderLists(); render(); });
+function curS(){ return state.speakers.find(x=>x.id===state.selSpk); }
+
+$('addObj').onclick=addObject; $('addSpk').onclick=addSpeaker;
+$('clrSpk').onclick=()=>{ state.speakers=[]; state.selSpk=null; renderAll(); };
+$('preset').onchange=e=>{ if(e.target.value){loadPreset(e.target.value); e.target.value='';} };
+['rW','rD','rH'].forEach(id=>$(id).oninput=e=>{ const k={rW:'w',rD:'d',rH:'h'}[id]; state.room[k]=num(e.target); });
+
+// panner
+const pmap={pRoll:'rolloff',pBlur:'blur',pThr:'threshold'};
+Object.keys(pmap).forEach(id=>$(id).oninput=e=>{ const v=parseFloat(e.target.value); state.panner[pmap[id]]=v;
+  $(id+'v').textContent= id==='pRoll'?v.toFixed(1):v.toFixed(2); render(); });
+
+// mode toggles
+$('modeObjects').onclick=()=>setMode('objects');
+$('modeRoom').onclick=()=>setMode('room');
+function setMode(m){ state.mode=m; $('modeObjects').classList.toggle('on',m==='objects'); $('modeRoom').classList.toggle('on',m==='room');
+  if(m==='room'){ $('sRoom').classList.remove('collapsed'); } }
+
+// section collapse
+document.querySelectorAll('.sect h3').forEach(h=>{ if(h.style.cursor==='default')return; h.onclick=()=>h.parentElement.classList.toggle('collapsed'); });
+
+$('projName').oninput=e=>state.project=e.target.value;
+
+// connection
+function setConn(ok){ state.bridge.connected=ok; $('connDot').classList.toggle('ok',ok); $('connTxt').textContent= ok?'bridge online':'bridge offline'; }
+$('btnConnect').onclick=async()=>{ state.bridge.url=$('bUrl').value.replace(/\/$/,'');
+  try{ const r=await fetch(state.bridge.url+'/ping'); setConn(r.ok); $('connHint').textContent = r.ok?'Connected. Object moves now stream to REAPER over OSC.':'Bridge responded but not OK.'; }
+  catch(err){ setConn(false); $('connHint').textContent='Could not reach the bridge. Is reaper_bridge.py running on '+state.bridge.url+' ?'; } };
+$('bRate').oninput=e=>{ state.bridge.rate=parseInt(e.target.value,10); $('bRatev').textContent=e.target.value; };
+
+// export / import
+$('btnExport').onclick=()=>{ const data=JSON.stringify({project:state.project,room:state.room,speakers:state.speakers,objects:state.objects,panner:state.panner},null,2);
+  const b=new Blob([data],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b);
+  a.download=(state.project||'show').replace(/\s+/g,'_')+'.spp.json'; a.click(); };
+$('btnImport').onclick=()=>$('fileImport').click();
+$('fileImport').onchange=e=>{ const f=e.target.files[0]; if(!f)return; const rd=new FileReader();
+  rd.onload=()=>{ try{ const d=JSON.parse(rd.result); state.project=d.project||state.project; state.room=d.room||state.room;
+    state.speakers=d.speakers||[]; state.objects=d.objects||[]; state.panner=Object.assign(state.panner,d.panner||{});
+    state.objects.forEach((o,i)=>{ if(!o.color)o.color=PALETTE[i%PALETTE.length]; if(!o.osc)o.osc={track:i+1,fx:1,px:0,py:1,pz:2,pg:''}; });
+    state.selObj=null; state.selSpk=null;
+    $('projName').value=state.project; $('rW').value=state.room.w; $('rD').value=state.room.d; $('rH').value=state.room.h;
+    $('pRoll').value=state.panner.rolloff; $('pBlur').value=state.panner.blur; $('pThr').value=state.panner.threshold;
+    $('pRollv').textContent=state.panner.rolloff.toFixed(1); $('pBlurv').textContent=state.panner.blur.toFixed(2); $('pThrv').textContent=state.panner.threshold.toFixed(2);
+    renderAll(); }catch(err){ alert('Could not read file: '+err.message); } };
+  rd.readAsText(f); e.target.value=''; };
+
+//============================================================ init
+bindCanvas(cTop,ctxT,'top'); bindCanvas(cFront,ctxF,'front');
+window.addEventListener('resize', render);
+$('pRoll').value=2; $('pBlur').value=0.10; $('pThr').value=0.08; $('bRate').value=30;
+loadPreset('7.1.4');
+addObject();
+setMode('objects');
+render();
+</script>
+</body>
+</html>
