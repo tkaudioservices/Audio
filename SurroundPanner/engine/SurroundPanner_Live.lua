@@ -1,5 +1,5 @@
 --[[
-  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.10.1
+  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.11.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -31,7 +31,7 @@ local LEVELS = IPC .. "/levels.json"
 local MATCH = "surroundpanner"   -- matches "JS: tk SurroundPanner", not "ReaSurroundPan"
 local MB     = 1000              -- gmem meter base, matches the JSFX (gmem[MB+ch] = peak per output)
 local MAXSPK = 16                -- matches the JSFX MAXOUT
-local STRIDE = 7                 -- per-speaker gmem block: x, y, z, lfe, cw, cd, ca (matches the JSFX)
+local STRIDE = 8                 -- per-speaker gmem block: x, y, z, lfe, cw, cd, ca, type (matches the JSFX)
 
 local function setstate(on)
   reaper.SetExtState(NS, "live", on and "1" or "0", false)
@@ -172,10 +172,11 @@ local function loadRoom()
       local cw = tonumber(blk:match('"cw":%s*([%d.]+)')) or 0   -- coverage ellipse (absent => off)
       local cd = tonumber(blk:match('"cd":%s*([%d.]+)')) or 0
       local ca = tonumber(blk:match('"ca":%s*(%-?[%d.]+)')) or 0
+      local ty = tonumber(blk:match('"ty":%s*(%d)')) or 0      -- mount type: 0 ceiling, 1 wall, 2 sub
       local b = 1 + i*STRIDE
       reaper.gmem_write(b + 0, x);  reaper.gmem_write(b + 1, y);  reaper.gmem_write(b + 2, z)
       reaper.gmem_write(b + 3, lf); reaper.gmem_write(b + 4, cw); reaper.gmem_write(b + 5, cd)
-      reaper.gmem_write(b + 6, ca)
+      reaper.gmem_write(b + 6, ca); reaper.gmem_write(b + 7, ty)
       i = i + 1
     end
   end

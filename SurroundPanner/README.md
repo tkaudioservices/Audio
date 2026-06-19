@@ -126,9 +126,15 @@ an approximation, since the plug‑in's drift is randomised.)
 ## Rooms & speaker layouts
 
 The room takes **fully custom speaker placement**. Pick a preset as a starting point —
-**Stereo, 5.1, 7.1, 7.1.4 (Atmos)** — then in *Edit room* mode drag speakers on the
-canvas, or edit each speaker's X/Y/Z and LFE flag in the list. Add or remove speakers
-freely; any count and shape works.
+**Stereo, 5.1, 7.1, 7.1.4 (Atmos)**, or **Time Machine — AIDAnova** (the real 16‑channel
+venue: 9 directional wall FX, 4 ceiling zones, stage, subs, transition) — then in *Edit room*
+mode drag speakers on the canvas, or edit each speaker's type / X/Y/Z / LFE in the list. Add or
+remove speakers freely; any count and shape works.
+
+Set the **room size** (W × D × H) in metres; positions, coverage and effect sizes all read in
+real‑world metres (the engine stays normalised under the hood). Each speaker has a **mount type**:
+**ceiling** (down‑facing footprint), **wall** (a coverage lobe thrown forward along its angle —
+for speakers that fire across the room), or **sub**.
 
 **Coverage shapes.** Each speaker can be given an elliptical **footprint** (Cover W / Cover D /
 Angle) marking the area it actually feeds — e.g. a ceiling speaker's downward spot, or a wide
@@ -199,7 +205,7 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 | File | Direction | Contents |
 |---|---|---|
 | `cmds.json` | UI → REAPER | `{"seq":N,"params":[{"t","f","p","v"}, …]}` — latest value per (track, fx, param). |
-| `room.json` | UI → REAPER | `{"speakers":[{"x","y","z","lfe","cw","cd","ca"}, …]}` — layout + per‑speaker coverage ellipse (`cw`/`cd` half‑axes, `ca` angle°; 0 = off). |
+| `room.json` | UI → REAPER | `{"speakers":[{"x","y","z","lfe","cw","cd","ca","ty"}, …]}` — layout + coverage ellipse (`cw`/`cd` half‑axes, `ca` angle°; 0 = off) + mount type `ty` (0 ceiling, 1 wall, 2 sub). |
 | `session.json` | REAPER → UI | Objects (name, colour, group, x/y/z, param tags) + track list. |
 | `levels.json` | REAPER → UI | `{"levels":[…]}` — per‑speaker peak, ~12×/sec. |
 
@@ -221,9 +227,10 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 
 **Shared memory** (`gmem` namespace `tkSurroundPanner`):
 
-- `gmem[0]` = speaker count; then per speaker `i` a 7‑wide block at `gmem[1 + i*7 ..]`:
-  `x`, `y`, `z`, `lfe`, `cw`, `cd`, `ca` (coverage half‑axes + angle°). The count is written
-  last, so the JSFX never reads a partial layout (it falls back to a built‑in 7.1.4 if none is set).
+- `gmem[0]` = speaker count; then per speaker `i` an 8‑wide block at `gmem[1 + i*8 ..]`:
+  `x`, `y`, `z`, `lfe`, `cw`, `cd`, `ca` (coverage half‑axes + angle°), `type` (0 ceiling, 1 wall,
+  2 sub). The count is written last, so the JSFX never reads a partial layout (it falls back to a
+  built‑in 7.1.4 if none is set).
 - `gmem[1000 + ch]` = per‑output peak. Each JSFX instance (panner **and** `tk SurroundNoise`)
   maxes its level in; the Live script reads and clears these for the meters. (The meter base sits
   at 1000 to stay clear of the layout block, which can reach ~112 at 16 speakers.)

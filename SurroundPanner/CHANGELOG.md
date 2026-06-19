@@ -3,6 +3,12 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.11.0
+- **Real-world units (metres).** The room now has a size (W × D × H in metres, in *Room & speakers*), and object positions, coverage and effect depth all read in metres (X/Y share one isotropic scale, Z uses the height). Internally still normalized, so the engine is unchanged.
+- **Speaker mount types — ceiling / wall / sub.** Each speaker has a type. **Ceiling** keeps the down-facing footprint (the coverage ellipse centred under it); **wall** throws its coverage as a forward lobe along its Angle (so directional wall speakers only feed what they point at); **sub** for low-end. The panner and the browser preview both weight by the right shape per type.
+- **Time Machine (AIDAnova) preset.** A new *Room & speakers* preset that builds the real 16-channel Time Machine rig — 9 wall FX (directional), 4 ceiling zones (L/N/O, A/B/C, E/F/H, I/J/K), stage centre, ceiling subs, and transition FX — placed from the venue map (`examples/Time Machine - Speaker Map.svg`) in a 42 × 26 × 6 m room.
+- Under the hood: per-speaker shared-memory block grew 7 → 8 (adds `type`); the Live script and JSFX stay in lock-step.
+
 ## v0.10.1
 - **Effect rate is now an exponential scale** (≈0.02–5 Hz) so the slow end — where movement design actually happens — has fine control, shown as seconds-per-cycle (e.g. "28.8 s") for slow rates and Hz for fast.
 - **The X/Y/Z faders track the live effect motion** while an effect runs (so you can watch the position move), without changing the base position; they restore to the base when the effect is turned off. (A fader you're dragging is left alone.)
