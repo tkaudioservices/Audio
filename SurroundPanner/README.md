@@ -115,6 +115,13 @@ The room takes **fully custom speaker placement**. Pick a preset as a starting p
 canvas, or edit each speaker's X/Y/Z and LFE flag in the list. Add or remove speakers
 freely; any count and shape works.
 
+**Coverage shapes.** Each speaker can be given an elliptical **footprint** (Cover W / Cover D /
+Angle) marking the area it actually feeds — e.g. a ceiling speaker's downward spot, or a wide
+front fill. The panner weights each speaker's DBAP gain by how far the object sits inside that
+speaker's ellipse, so objects only get signal from speakers that cover them — sharper, more
+realistic panning. Coverage is **off by default** (0 = covers everywhere). The ellipses draw on
+the top view and the latch lines follow the weighting, in the browser and the plug‑in alike.
+
 Coordinates are normalised: `X` −1…+1 (left→right), `Y` −1…+1 (rear→front), `Z` 0…1
 (floor→ceiling). Presets follow REAPER's channel order, including the LFE gap.
 
@@ -177,7 +184,7 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 | File | Direction | Contents |
 |---|---|---|
 | `cmds.json` | UI → REAPER | `{"seq":N,"params":[{"t","f","p","v"}, …]}` — latest value per (track, fx, param). |
-| `room.json` | UI → REAPER | `{"speakers":[{"x","y","z","lfe"}, …]}` — the speaker layout. |
+| `room.json` | UI → REAPER | `{"speakers":[{"x","y","z","lfe","cw","cd","ca"}, …]}` — layout + per‑speaker coverage ellipse (`cw`/`cd` half‑axes, `ca` angle°; 0 = off). |
 | `session.json` | REAPER → UI | Objects (name, colour, group, x/y/z, param tags) + track list. |
 | `levels.json` | REAPER → UI | `{"levels":[…]}` — per‑speaker peak, ~12×/sec. |
 
@@ -195,11 +202,12 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 
 **Shared memory** (`gmem` namespace `tkSurroundPanner`):
 
-- `gmem[0]` = speaker count; then per speaker `i`: `x` `gmem[1+i*4]`, `y` `gmem[2+i*4]`,
-  `z` `gmem[3+i*4]`, `lfe` `gmem[4+i*4]`. The count is written last, so the JSFX never
-  reads a partial layout (it falls back to a built‑in 7.1.4 if none is set).
-- `gmem[100 + ch]` = per‑output peak. Each JSFX instance (panner **and** `tk SurroundNoise`)
-  maxes its level in; the Live script reads and clears these for the meters.
+- `gmem[0]` = speaker count; then per speaker `i` a 7‑wide block at `gmem[1 + i*7 ..]`:
+  `x`, `y`, `z`, `lfe`, `cw`, `cd`, `ca` (coverage half‑axes + angle°). The count is written
+  last, so the JSFX never reads a partial layout (it falls back to a built‑in 7.1.4 if none is set).
+- `gmem[1000 + ch]` = per‑output peak. Each JSFX instance (panner **and** `tk SurroundNoise`)
+  maxes its level in; the Live script reads and clears these for the meters. (The meter base sits
+  at 1000 to stay clear of the layout block, which can reach ~112 at 16 speakers.)
 
 **Bridge** — `python3 bridge/reaper_bridge.py [--port 9000] [--host 127.0.0.1] [--ipc-dir DIR]`.
 Endpoints: `GET /ping`, `/session`, `/levels`, static files; `POST /set` (object moves),
@@ -217,9 +225,9 @@ Endpoints: `GET /ping`, `/session`, `/levels`, static files; `POST /set` (object
 - [x] **Panner law** (rolloff / spread) drives the engine, not just the view.
 - [x] **Auto channel count** — tracks and the bus grow to the speaker count.
 - [x] **Per‑object LFE send** — low‑passed mono feed per object to the room's LFE channel(s).
-- [~] **Speaker coverage + pink noise** — ✅ per‑speaker pink‑noise solo (*Speaker check*,
-      via `tk SurroundNoise` on the bus) for lining up the real rig. Still to do: per‑speaker
-      coverage shapes (e.g. ceiling footprints), unioned across a group, coupled to object spread.
+- [x] **Speaker coverage + pink noise** — ✅ per‑speaker pink‑noise solo (*Speaker check*, via
+      `tk SurroundNoise` on the bus) and ✅ per‑speaker elliptical coverage footprints weighting
+      the pan. (Future: union coverage across a group; couple it to object spread.)
 - [ ] **Multi‑channel sources / effect engine** — spread a stereo (or N‑channel) source
       across the field with movement/FX (orbit, spread, centre‑of‑gravity), à la L‑ISA.
 - [ ] **Binaural mixdown** — a headphone render path for offline work: an HRTF convolver

@@ -86,7 +86,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.8.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.9.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <span class="spacer"></span>
   <span class="lastsent" id="hdrSent" title="last command sent to REAPER">—</span>
@@ -142,6 +142,12 @@
             <div class="row"><label>Y</label><input type="number" id="sY" min="-1" max="1" step="0.01"></div>
             <div class="row"><label>Z</label><input type="number" id="sZ" min="0" max="1" step="0.01"></div>
             <div class="row"><label>LFE</label><input type="checkbox" id="sLfe"></div>
+          </div>
+          <div class="hint" style="margin-top:8px">Coverage — the area this speaker actually feeds (0 = off, covers everywhere). Objects outside its footprint get little feed from it, so the pan follows the real rig. Width/Depth are half-sizes; Angle rotates the ellipse.</div>
+          <div class="grid2">
+            <div class="row"><label>Cover W</label><input type="number" id="sCW" min="0" max="2" step="0.05"></div>
+            <div class="row"><label>Cover D</label><input type="number" id="sCD" min="0" max="2" step="0.05"></div>
+            <div class="row"><label>Angle°</label><input type="number" id="sCA" min="0" max="360" step="5"></div>
           </div>
         </div>
       </div>
@@ -213,19 +219,28 @@ const PRESETS = {
 };
 function loadPreset(name){
   const p = PRESETS[name]; if(!p) return;
-  state.speakers = p.map((s,i)=>({id:uid(), name:s[0], x:s[1], y:s[2], z:s[3], lfe:s[4]||0, ch:i+1}));
+  state.speakers = p.map((s,i)=>({id:uid(), name:s[0], x:s[1], y:s[2], z:s[3], lfe:s[4]||0, ch:i+1, cw:0, cd:0, ca:0}));
   state.selSpk = null;
   renderAll(); pushRoom();
 }
 
 //============================================================ DBAP panning
+// Coverage weight: how well object (ox,oy) sits inside speaker s's elliptical footprint
+// (top-down X/Y). cw/cd are half-axes, ca the angle in degrees. 0 => off (weight 1). Mirrors the JSFX.
+function coverageWeight(s, ox, oy){
+  const cw=s.cw||0, cd=s.cd||0; if(!(cw>0 && cd>0)) return 1;
+  const ca=(s.ca||0)*Math.PI/180, cs=Math.cos(ca), sn=Math.sin(ca);
+  const dx=ox-s.x, dy=oy-s.y, lx=dx*cs+dy*sn, ly=-dx*sn+dy*cs;
+  const e=Math.sqrt((lx/cw)**2+(ly/cd)**2);
+  return e<=1 ? 1 : Math.max(0.001, Math.exp(-((e-1)**2)*4));
+}
 function computeGains(obj){
   const eps = state.panner.blur;
   const raw = state.speakers.map(s=>{
     if(s.lfe) return 0;   // LFE is non-positional — no latch line, matches the JSFX
     const dx=obj.x-s.x, dy=obj.y-s.y, dz=(obj.z-s.z);
     const d = Math.sqrt(dx*dx+dy*dy+dz*dz) + eps;
-    return 1/Math.pow(d, state.panner.rolloff);
+    return (1/Math.pow(d, state.panner.rolloff)) * coverageWeight(s, obj.x, obj.y);
   });
   const sumSq = raw.reduce((a,g)=>a+g*g,0);
   const norm = Math.sqrt(sumSq)||1;
@@ -261,11 +276,24 @@ function drawSpeaker(ctx,sx,sy,name,sel){
   ctx.fillStyle='#7f8c99'; ctx.font='10px '+getComputedStyle(document.body).getPropertyValue('--mono');
   ctx.fillText(name, sx+8, sy+3);
 }
+// speaker coverage footprints (top view) — only drawn for speakers with coverage set
+function drawCoverage(ctx,w,h){
+  const sxS=(w-2*PAD)/2, syS=(h-2*PAD)/2;
+  state.speakers.forEach(s=>{ const cw=s.cw||0, cd=s.cd||0; if(!(cw>0&&cd>0)) return;
+    const [cx,cy]=topXY(s.x,s.y,w,h), sel=s.id===state.selSpk;
+    ctx.save(); ctx.translate(cx,cy); ctx.rotate(-(s.ca||0)*Math.PI/180);   // screen Y is flipped vs world
+    ctx.beginPath(); ctx.ellipse(0,0,Math.max(1,cw*sxS),Math.max(1,cd*syS),0,0,Math.PI*2);
+    ctx.fillStyle = sel?'rgba(57,192,237,0.12)':'rgba(57,192,237,0.05)'; ctx.fill();
+    ctx.strokeStyle = sel?'rgba(57,192,237,0.9)':'rgba(57,192,237,0.3)'; ctx.lineWidth = sel?1.5:1; ctx.stroke();
+    ctx.restore();
+  });
+}
 
 function render(){
   const T=fit(cTop), F=fit(cFront);
   // TOP VIEW
   drawGrid(ctxT,T.w,T.h);
+  drawCoverage(ctxT,T.w,T.h);   // speaker footprints, behind the latch lines
   // latch lines
   state.objects.forEach(o=>{ if(o.visible===false) return;
     const g=computeGains(o); const [ox,oy]=topXY(o.x,o.y,T.w,T.h);
@@ -384,7 +412,7 @@ async function pollState(){ if(!state.bridge.connected) return;   // 'Follow' �
 // objects are created by REAPER (one per track), not in the UI — see applyImport()
 function selectObject(id){ state.selObj=id; state.selSpk=null; syncObjEditor(); renderLists(); }
 function selectSpeaker(id){ state.selSpk=id; syncSpkEditor(); renderLists(); }
-function addSpeaker(){ state.speakers.push({id:uid(),name:'Spk'+(state.speakers.length+1),x:0,y:0,z:0,lfe:0,ch:state.speakers.length+1}); selectSpeaker(state.speakers[state.speakers.length-1].id); renderAll(); pushRoom(); }
+function addSpeaker(){ state.speakers.push({id:uid(),name:'Spk'+(state.speakers.length+1),x:0,y:0,z:0,lfe:0,ch:state.speakers.length+1,cw:0,cd:0,ca:0}); selectSpeaker(state.speakers[state.speakers.length-1].id); renderAll(); pushRoom(); }
 function delSpeaker(id){ state.speakers=state.speakers.filter(s=>s.id!==id); state.speakers.forEach((s,i)=>s.ch=i+1); if(state.selSpk===id)state.selSpk=null; renderAll(); pushRoom(); }
 
 //============================================================ editors <-> state
@@ -401,6 +429,7 @@ function syncObjEditor(){
 function syncSpkEditor(){ const s=state.speakers.find(x=>x.id===state.selSpk); const e=$('spkEditor'); if(!e) return;
   e.style.display = s?'block':'none'; if(!s) return;
   $('sName').value=s.name; $('sX').value=(+s.x).toFixed(2); $('sY').value=(+s.y).toFixed(2); $('sZ').value=(+s.z).toFixed(2); $('sLfe').checked=!!s.lfe;
+  $('sCW').value=(+(s.cw||0)).toFixed(2); $('sCD').value=(+(s.cd||0)).toFixed(2); $('sCA').value=Math.round(s.ca||0);
 }
 // speaker editor removed — speakers are read-only, derived from the track layout
 function renderLists(){
@@ -460,10 +489,12 @@ function curS(){ return state.speakers.find(x=>x.id===state.selSpk); }
 $('sName').oninput=e=>{ const s=curS(); if(s){ s.name=e.target.value; renderLists(); } };
 ['sX','sY','sZ'].forEach(id=>$(id).oninput=e=>{ const s=curS(); if(!s)return; const v=parseFloat(e.target.value)||0;
   if(id==='sX')s.x=v; if(id==='sY')s.y=v; if(id==='sZ')s.z=v; render(); pushRoom(); });
+['sCW','sCD','sCA'].forEach(id=>$(id).oninput=e=>{ const s=curS(); if(!s)return; const v=parseFloat(e.target.value)||0;
+  if(id==='sCW')s.cw=v; if(id==='sCD')s.cd=v; if(id==='sCA')s.ca=v; render(); pushRoom(); });
 $('sLfe').onchange=e=>{ const s=curS(); if(s){ s.lfe=e.target.checked?1:0; renderLists(); render(); pushRoom(); } };
 let roomTimer=0;
 function pushRoom(){ clearTimeout(roomTimer); roomTimer=setTimeout(()=>{
-  const sp=state.speakers.map(s=>({x:+(+s.x).toFixed(4),y:+(+s.y).toFixed(4),z:+(+s.z).toFixed(4),lfe:s.lfe?1:0}));
+  const sp=state.speakers.map(s=>({x:+(+s.x).toFixed(4),y:+(+s.y).toFixed(4),z:+(+s.z).toFixed(4),lfe:s.lfe?1:0,cw:+(+(s.cw||0)).toFixed(4),cd:+(+(s.cd||0)).toFixed(4),ca:+(+(s.ca||0)).toFixed(1)}));
   fetch(state.bridge.url+'/room',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({speakers:sp})}).catch(()=>{});
 },150); }
 function setMode(m){ state.mode=m; const b=$('modeRoom'); if(b) b.classList.toggle('on', m==='room'); render(); }

@@ -1,4 +1,4 @@
-desc:tk SurroundPanner v0.8.0
+desc:tk SurroundPanner v0.9.0
 //  tk Audio Services — object panner for tkSurroundPanner
 //  2 in -> up to 16 out. DBAP, matching the web UI's latch-line view.
 //  Speaker layout is read live from shared memory (set by SurroundPanner_Live.lua
@@ -38,9 +38,12 @@ out_pin:16
 @init
 MAXOUT = 16;
 kx = 10000; ky = 10100; kz = 10200; klfe = 10300; kg = 10400; mpk = 10500;   // active layout + meter peaks (local mem)
+kcw = 10600; kcd = 10700; kca = 10800;                          // per-speaker coverage ellipse (w, d, angle°)
 dkx = 11000; dky = 11100; dkz = 11200; dklfe = 11300;            // built-in default (7.1.4)
 NDEF = 12;
-MB = 100;   // gmem meter base: gmem[MB+ch] = peak per output, shared with the Lua / web UI
+MB = 1000;  // gmem meter base: gmem[MB+ch] = peak per output, shared with the Lua / web UI
+            // (well clear of the layout region gmem[1 + i*STRIDE ..], which can reach ~112 at 16 spk)
+STRIDE = 7; // per-speaker gmem block: x, y, z, lfe, cw, cd, ca
 lpk = 1 - exp(-2*$pi*120 / srate);   // 1-pole low-pass coeff (~120 Hz) for the LFE send
 lpz = 0;
 
@@ -54,17 +57,32 @@ dspk(10,-0.6,-0.6, 1.0, 0);  dspk(11, 0.6,-0.6, 1.0, 0);
 
 NSPK = NDEF;
 
-// gmem layout:  gmem[0]=count, then per speaker i: x,y,z,lfe at gmem[1+i*4 ..+3]
-function loadlayout() local(n i) (
+// gmem layout:  gmem[0]=count, then per speaker i: x,y,z,lfe,cw,cd,ca at gmem[1+i*STRIDE ..+6]
+function loadlayout() local(n i b) (
   n = gmem[0];
   (n >= 1 && n <= MAXOUT) ? (
     NSPK = n;
     i = 0; loop(NSPK,
-      kx[i]=gmem[1+i*4]; ky[i]=gmem[2+i*4]; kz[i]=gmem[3+i*4]; klfe[i]=gmem[4+i*4]; i+=1; );
+      b = 1 + i*STRIDE;
+      kx[i]=gmem[b]; ky[i]=gmem[b+1]; kz[i]=gmem[b+2]; klfe[i]=gmem[b+3];
+      kcw[i]=gmem[b+4]; kcd[i]=gmem[b+5]; kca[i]=gmem[b+6]; i+=1; );
   ) : (
     NSPK = NDEF;
-    i = 0; loop(NSPK, kx[i]=dkx[i]; ky[i]=dky[i]; kz[i]=dkz[i]; klfe[i]=dklfe[i]; i+=1; );
+    i = 0; loop(NSPK, kx[i]=dkx[i]; ky[i]=dky[i]; kz[i]=dkz[i]; klfe[i]=dklfe[i];
+      kcw[i]=0; kcd[i]=0; kca[i]=0; i+=1; );      // built-in default: no coverage shaping
   );
+);
+
+// Coverage weight for speaker i at object (ox,oy): how well the object sits inside the speaker's
+// elliptical footprint (top-down X/Y). cw/cd are half-axes, ca the angle in degrees. 0 => off (1).
+function coverage(i ox oy) local(dx dy ca cs sn lx ly e) (
+  (kcw[i] > 0 && kcd[i] > 0) ? (
+    dx = ox-kx[i]; dy = oy-ky[i];
+    ca = kca[i]*$pi/180; cs = cos(ca); sn = sin(ca);
+    lx = dx*cs + dy*sn; ly = -dx*sn + dy*cs;
+    e = sqrt(sqr(lx/kcw[i]) + sqr(ly/kcd[i]));
+    e <= 1 ? 1 : max(0.001, exp(-sqr(e-1)*4));   // soft edge outside the ellipse, floored so it never drops out
+  ) : 1;
 );
 
 function calcgains() local(ox oy oz og roll blur i dx dy dz dd gg ss nn) (
@@ -74,7 +92,7 @@ function calcgains() local(ox oy oz og roll blur i dx dy dz dd gg ss nn) (
     klfe[i] ? ( kg[i]=0; ) : (
       dx=ox-kx[i]; dy=oy-ky[i]; dz=oz-kz[i];
       dd=sqrt(dx*dx+dy*dy+dz*dz)+blur;
-      gg=pow(dd, -roll);
+      gg=pow(dd, -roll) * coverage(i, ox, oy);   // DBAP, biased by speaker coverage
       kg[i]=gg; ss+=gg*gg;
     );
     i+=1;

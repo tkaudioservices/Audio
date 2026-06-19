@@ -3,6 +3,10 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.9.0
+- **Speaker coverage shapes.** Each speaker can be given an **elliptical footprint** (Cover W / Cover D / Angle in *Room & speakers*) marking the area it actually feeds. The DBAP gain to each speaker is now weighted by how far the object sits inside that speaker's ellipse, so the pan follows the real rig instead of leaking into speakers that don't cover an area. Coverage is **off by default** (0 = covers everywhere = unchanged behaviour); the ellipses draw on the top view, and the latch lines reflect the weighting. The identical weighting runs in the browser preview and the JSFX.
+- Under the hood: the per-speaker shared-memory block grew from 4 to 7 values (adds cw/cd/ca) and the meter base moved clear of it; the Live script now parses each speaker object independently (robust to field order / new keys).
+
 ## v0.8.0
 - **Panner law now actually reaches the plug-in.** The Live script was writing parameters with `TrackFX_SetParam`, whose out-of-0..1 handling silently no-ops some plug-ins (the classic "Rolloff won't move" trap). It now sets through `TrackFX_SetParamNormalized`, reading each slider's live min/max from the FX — so Focus/Spread (and X/Y/Z/Gain/LFE) land reliably.
 - **Focus & Spread, in meaningful units.** "Rolloff" → **Focus** and "Blur" → **Spread**, both shown as **0–100 %** (mapped to the JSFX ranges). "Line cut" is gone — faint links auto-hide at a fixed threshold, and Spread now visibly drives the latch-line links and thicknesses.

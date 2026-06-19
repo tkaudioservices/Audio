@@ -1,4 +1,4 @@
-desc:tk SurroundNoise v0.8.0
+desc:tk SurroundNoise v0.9.0
 //  tk Audio Services — per-speaker pink-noise generator for tkSurroundPanner rig setup.
 //
 //  Put ONE instance on your immersive bus (the folder track the objects fold into). All the
@@ -50,7 +50,7 @@ out_pin:16
 
 @init
 MAXOUT = 16;
-MB  = 100;    // meter base in gmem — shared with the panner and the Lua (gmem[MB+ch] = peak)
+MB  = 1000;   // meter base in gmem — shared with the panner and the Lua (gmem[MB+ch] = peak)
 mpk = 9000;   // local peak buffer (per-instance scratch)
 amp = 0;
 

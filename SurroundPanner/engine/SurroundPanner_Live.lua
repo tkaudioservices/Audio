@@ -1,5 +1,5 @@
 --[[
-  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.8.0
+  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.9.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -29,8 +29,9 @@ local SESS   = IPC .. "/session.json"
 local ROOM   = IPC .. "/room.json"
 local LEVELS = IPC .. "/levels.json"
 local MATCH = "surroundpanner"   -- matches "JS: tk SurroundPanner", not "ReaSurroundPan"
-local MB    = 100                -- gmem meter base, matches the JSFX (gmem[MB+ch] = peak per output)
-local MAXSPK = 16                -- matches the JSFX MAXOUT; keeps the layout (gmem[1+i*4..]) clear of MB
+local MB     = 1000              -- gmem meter base, matches the JSFX (gmem[MB+ch] = peak per output)
+local MAXSPK = 16                -- matches the JSFX MAXOUT
+local STRIDE = 7                 -- per-speaker gmem block: x, y, z, lfe, cw, cd, ca (matches the JSFX)
 
 local function setstate(on)
   reaper.SetExtState(NS, "live", on and "1" or "0", false)
@@ -156,12 +157,20 @@ local function loadRoom()
   local s = readfile(ROOM); if not s or s == lastRoom then return end
   lastRoom = s
   local i = 0
-  for x, y, z, lf in s:gmatch('"x":%s*(%-?[%d.]+)%s*,%s*"y":%s*(%-?[%d.]+)%s*,%s*"z":%s*(%-?[%d.]+)%s*,%s*"lfe":%s*(%d)') do
-    if i < MAXSPK then                                 -- never write past the JSFX's output cap into the meter region
-      reaper.gmem_write(1 + i*4 + 0, tonumber(x))
-      reaper.gmem_write(1 + i*4 + 1, tonumber(y))
-      reaper.gmem_write(1 + i*4 + 2, tonumber(z))
-      reaper.gmem_write(1 + i*4 + 3, tonumber(lf))
+  -- parse each speaker object on its own so field order / new keys (coverage) don't shift anything
+  for blk in s:gmatch("{[^}]*}") do
+    local x = tonumber(blk:match('"x":%s*(%-?[%d.]+)'))
+    local y = tonumber(blk:match('"y":%s*(%-?[%d.]+)'))
+    local z = tonumber(blk:match('"z":%s*(%-?[%d.]+)'))
+    if x and y and z and i < MAXSPK then               -- skip the wrapper / cap at the JSFX output max
+      local lf = tonumber(blk:match('"lfe":%s*(%d)')) or 0
+      local cw = tonumber(blk:match('"cw":%s*([%d.]+)')) or 0   -- coverage ellipse (absent => off)
+      local cd = tonumber(blk:match('"cd":%s*([%d.]+)')) or 0
+      local ca = tonumber(blk:match('"ca":%s*(%-?[%d.]+)')) or 0
+      local b = 1 + i*STRIDE
+      reaper.gmem_write(b + 0, x);  reaper.gmem_write(b + 1, y);  reaper.gmem_write(b + 2, z)
+      reaper.gmem_write(b + 3, lf); reaper.gmem_write(b + 4, cw); reaper.gmem_write(b + 5, cd)
+      reaper.gmem_write(b + 6, ca)
       i = i + 1
     end
   end
