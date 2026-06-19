@@ -1,80 +1,93 @@
 #!/usr/bin/env python3
 """
-SurroundPanner bridge — tk Audio Services
-=========================================
+tkSurroundPanner bridge — tk Audio Services  ·  app v0.8.0
+=========================================================
 
-A tiny, dependency-free bridge between the SurroundPanner web UI and REAPER.
+Connects the web UI to the SurroundPanner_Live.lua script running inside REAPER,
+using two small JSON files in REAPER's tkSurroundPanner folder (no OSC, no extensions):
 
-  browser  --HTTP/JSON-->  this bridge  --OSC/UDP-->  REAPER
+  browser  --HTTP-->  this bridge  --writes cmds.json-->     Live.lua (REAPER)
+  browser  <--HTTP--  this bridge  <--reads session.json--   Live.lua (REAPER)
 
-It does two things:
-  1. Serves the web UI (index.html) at  http://localhost:<port>/
-  2. Accepts POST /osc  {"messages":[{"addr":"/...","value":0.5}, ...]}
-     and forwards each as an OSC message to REAPER.
+Live.lua applies the commands with TrackFX_SetParamNormalized — reliable on every
+track, and it publishes the current scene to session.json so the UI auto-loads
+with no Scan/Import step.
 
-REAPER setup (once):
-  Preferences -> Control/OSC/web -> Add -> OSC (Open Sound Control)
-    Mode:                 "Configure device IP+local port"
-    Device port:          (leave blank — we only send TO reaper)
-    Local listen port:    8000        <-- must match --reaper-port below
-  Tick "Allow binding messages to REAPER actions and FX learn".
+Setup is now just:
+  1. In REAPER, run SurroundPanner_Live.lua  (Actions -> Load ReaScript). Leave it running.
+  2. Run this bridge:  python3 reaper_bridge.py
+  3. Open http://localhost:9000/
 
-Then run:   python3 reaper_bridge.py
-and open:   http://localhost:9000/
-
-Standard library only — no pip install, like the rest of this repo.
+Standard library only — no pip install.
 """
 import argparse
 import json
 import os
-import socket
-import struct
+import re
 import sys
-import time
+import tempfile
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+VERSION = 4
 HERE = os.path.dirname(os.path.abspath(__file__))
-WEB_ROOT = os.path.dirname(HERE)  # serve index.html from the repo root folder
+WEB_ROOT = os.path.dirname(HERE)
 
-# ----------------------------------------------------------------- OSC encode
-def _osc_string(s):
-    b = s.encode("utf-8") + b"\x00"
-    return b + b"\x00" * ((4 - len(b) % 4) % 4)
+def _reaper_resource():
+    home = os.path.expanduser("~")
+    if sys.platform == "darwin":
+        return os.path.join(home, "Library", "Application Support", "REAPER")
+    if sys.platform.startswith("win"):
+        return os.path.join(os.environ.get("APPDATA", home), "REAPER")
+    return os.path.join(home, ".config", "REAPER")
 
-def osc_message(addr, *args):
-    """Encode a minimal OSC message. Supports float and string args."""
-    types = ","
-    data = b""
-    for a in args:
-        if isinstance(a, str):
-            types += "s"
-            data += _osc_string(a)
-        else:  # numbers -> 32-bit float (what REAPER fxparam expects)
-            types += "f"
-            data += struct.pack(">f", float(a))
-    return _osc_string(addr) + _osc_string(types) + data
+# Shared with SurroundPanner_Live.lua, which uses reaper.GetResourcePath()/tkSurroundPanner
+IPC_DIR = os.path.join(_reaper_resource(), "tkSurroundPanner")
+CMDS = SESSION = ROOM = LEVELS = ""
+def _set_paths():
+    global CMDS, SESSION, ROOM, LEVELS
+    CMDS = os.path.join(IPC_DIR, "cmds.json")
+    SESSION = os.path.join(IPC_DIR, "session.json")
+    ROOM = os.path.join(IPC_DIR, "room.json")
+    LEVELS = os.path.join(IPC_DIR, "levels.json")
+_set_paths()
 
-
-class OSCSender:
-    def __init__(self, host, port):
-        self.addr = (host, port)
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.count = 0
-        self._last_log = 0.0
-
-    def send(self, addr, value):
-        self.sock.sendto(osc_message(addr, float(value)), self.addr)
-        self.count += 1
-        now = time.time()
-        if now - self._last_log > 1.0:  # rate-limited heartbeat
-            print(f"  -> OSC {self.addr[0]}:{self.addr[1]}  {self.count} msgs sent "
-                  f"(last: {addr} = {float(value):.3f})", flush=True)
-            self._last_log = now
+ADDR_RE = re.compile(r"^/track/(\d+)/fx/(\d+)/fxparam/(\d+)/value$")
 
 
-# ----------------------------------------------------------------- HTTP server
+class Mailbox:
+    """Accumulates the latest value per (track,fx,param) and writes cmds.json."""
+    def __init__(self):
+        self.params = {}          # "t/f/p" -> (t, f, p, value)
+        self.seq = 0
+        self.lock = threading.Lock()
+
+    def update(self, messages):
+        changed = False
+        with self.lock:
+            for m in messages:
+                mt = ADDR_RE.match(m.get("addr", ""))
+                if not mt:
+                    continue
+                t, f, p = int(mt.group(1)), int(mt.group(2)), int(mt.group(3))
+                self.params["%d/%d/%d" % (t, f, p)] = (t, f, p, float(m["value"]))
+                changed = True
+            if not changed:
+                return
+            self.seq += 1
+            payload = '{"seq":%d,"params":[%s]}' % (
+                self.seq,
+                ",".join('{"t":%d,"f":%d,"p":%d,"v":%.4f}' % v for v in self.params.values()),
+            )
+        # atomic write so the Lua never reads a half-written file
+        fd, tmp = tempfile.mkstemp(dir=IPC_DIR, suffix=".tmp")
+        with os.fdopen(fd, "w") as fh:
+            fh.write(payload)
+        os.replace(tmp, CMDS)
+
+
 class Handler(BaseHTTPRequestHandler):
-    sender = None  # set in main()
+    mailbox = None
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -91,7 +104,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def log_message(self, *a):
-        pass  # keep the console clean; OSCSender prints the useful stuff
+        pass
 
     def do_OPTIONS(self):
         self._send(204)
@@ -99,13 +112,24 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         if path == "/ping":
-            return self._send(200, b'{"ok":true}', "application/json")
+            live = os.path.isfile(SESSION)
+            return self._send(200, ('{"ok":true,"version":%d,"live":%s}' % (VERSION, "true" if live else "false")).encode(), "application/json")
+        if path == "/session":
+            if os.path.isfile(SESSION):
+                return self._serve_file(SESSION, "application/json")
+            return self._send(404, b'{"error":"no session - run SurroundPanner_Live.lua in REAPER"}', "application/json")
+        if path == "/levels":
+            if os.path.isfile(LEVELS):
+                return self._serve_file(LEVELS, "application/json")
+            return self._send(200, b'{"levels":[]}', "application/json")
         if path in ("/", "/index.html"):
             return self._serve_file(os.path.join(WEB_ROOT, "index.html"), "text/html")
-        # serve any other static file living next to index.html (defensive)
         safe = os.path.normpath(os.path.join(WEB_ROOT, path.lstrip("/")))
         if safe.startswith(WEB_ROOT) and os.path.isfile(safe):
-            return self._serve_file(safe, "application/octet-stream")
+            ext = safe.rsplit(".", 1)[-1].lower()
+            ctype = {"png": "image/png", "svg": "image/svg+xml", "ico": "image/x-icon",
+                     "json": "application/json", "html": "text/html"}.get(ext, "application/octet-stream")
+            return self._serve_file(safe, ctype)
         return self._send(404, b"not found")
 
     def _serve_file(self, full, ctype):
@@ -116,37 +140,49 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found")
 
     def do_POST(self):
-        if self.path.split("?", 1)[0] != "/osc":
-            return self._send(404, b"not found")
+        path = self.path.split("?", 1)[0]
         try:
             n = int(self.headers.get("Content-Length", 0))
-            payload = json.loads(self.rfile.read(n) or b"{}")
-            for m in payload.get("messages", []):
-                self.sender.send(m["addr"], m["value"])
-            self._send(200, b'{"ok":true}', "application/json")
-        except Exception as e:  # never crash the bridge on a bad packet
+            raw = self.rfile.read(n) or b"{}"
+            if path == "/room":                       # speaker layout for the JSFX
+                fd, tmp = tempfile.mkstemp(dir=IPC_DIR, suffix=".tmp")
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(raw)
+                os.replace(tmp, ROOM)
+                return self._send(200, b'{"ok":true}', "application/json")
+            if path in ("/set", "/osc"):              # object positions
+                self.mailbox.update(json.loads(raw).get("messages", []))
+                return self._send(200, b'{"ok":true}', "application/json")
+            self._send(404, b"not found")
+        except Exception as e:
             self._send(400, json.dumps({"ok": False, "error": str(e)}).encode())
 
 
-# ----------------------------------------------------------------- main
 def main():
-    ap = argparse.ArgumentParser(description="SurroundPanner -> REAPER OSC bridge")
-    ap.add_argument("--port", type=int, default=9000, help="web/bridge port (default 9000)")
-    ap.add_argument("--host", default="127.0.0.1", help="bridge bind address")
-    ap.add_argument("--reaper-host", default="127.0.0.1", help="REAPER OSC host")
-    ap.add_argument("--reaper-port", type=int, default=8000, help="REAPER OSC listen port")
+    ap = argparse.ArgumentParser(description="tkSurroundPanner <-> REAPER (file bridge)")
+    ap.add_argument("--port", type=int, default=9000)
+    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--ipc-dir", default=None, help="folder shared with the Live script (default: REAPER resource path/tkSurroundPanner)")
     args = ap.parse_args()
 
-    Handler.sender = OSCSender(args.reaper_host, args.reaper_port)
+    if args.ipc_dir:
+        global IPC_DIR
+        IPC_DIR = args.ipc_dir
+        _set_paths()
+    os.makedirs(IPC_DIR, exist_ok=True)
+    Handler.mailbox = Mailbox()
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
 
-    print("=" * 60)
-    print("  SurroundPanner bridge — tk Audio Services")
-    print("=" * 60)
-    print(f"  UI:      http://{args.host}:{args.port}/")
-    print(f"  OSC ->   {args.reaper_host}:{args.reaper_port}  (set REAPER's local listen port to match)")
-    print("  Press Ctrl-C to stop.")
-    print("=" * 60, flush=True)
+    print("=" * 64)
+    print("  tkSurroundPanner bridge — tk Audio Services   (v%d)" % VERSION)
+    print("=" * 64)
+    print("  UI:       http://%s:%d/" % (args.host, args.port))
+    print("  link:     %s" % IPC_DIR)
+    print("  REAPER:   run SurroundPanner_Live.lua and leave it running.")
+    if not os.path.isfile(SESSION):
+        print("  note:     session.json not found yet — start the Live script in REAPER.")
+    print("  Ctrl-C to stop.")
+    print("=" * 64, flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

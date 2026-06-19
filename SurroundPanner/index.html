@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SurroundPanner — immersive object control surface</title>
+<title>tkSurroundPanner — immersive object control surface</title>
+<link rel="icon" type="image/svg+xml" href="assets/tk-mark.svg">
+<link rel="icon" type="image/png" sizes="any" href="assets/tk_logo.png">
+<link rel="apple-touch-icon" href="assets/tk_logo.png">
 <style>
   :root{
     --bg:#0f1216; --panel:#171c22; --panel2:#1e242c; --line:#2a323c;
@@ -20,6 +23,10 @@
   .topbar .brand{font-weight:700;letter-spacing:.5px;color:var(--accent)}
   .topbar .brand small{color:var(--dim);font-weight:400;letter-spacing:0}
   .topbar input.title{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:5px;padding:5px 8px;width:200px}
+  .brand{display:flex;align-items:center;gap:9px}
+  .brand .logo{width:30px;height:30px;flex:none;display:block}
+  .brand .name{font-weight:700;letter-spacing:.3px}
+  .brand .name .tk{color:#be1e2d} .brand .name .rest{color:var(--txt)}
   .spacer{flex:1}
   .btn{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:5px;padding:6px 10px;cursor:pointer}
   .btn:hover{border-color:var(--accent);color:#fff}
@@ -28,6 +35,11 @@
   .status{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--dim)}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--bad)}
   .dot.ok{background:var(--accent2)}
+  .lastsent{font-family:var(--mono);font-size:11px;color:var(--dim);max-width:44ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mtr{display:flex;align-items:center;gap:8px;margin:3px 0}
+  .mtr .mlbl{width:74px;flex:none;font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mtr .mbar{flex:1;height:9px;background:var(--panel2);border:1px solid var(--line);border-radius:3px;overflow:hidden}
+  .mtr .mfill{height:100%;width:0;background:var(--accent2)}
   .layout{display:flex;height:calc(100% - 49px)}
   .views{flex:1;display:flex;flex-direction:column;min-width:0;padding:10px;gap:10px}
   .viewbox{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
@@ -35,6 +47,8 @@
   #topView{flex:3}
   #frontView{flex:1;min-height:120px}
   canvas{display:block;width:100%;height:100%}
+  .viewbox .tkwm{position:absolute;bottom:9px;left:12px;height:15px;opacity:.2;filter:brightness(0) invert(1);pointer-events:none;z-index:3}
+  .row input[type=checkbox]{flex:none;width:16px;height:16px;accent-color:var(--accent)}
   .side{width:340px;background:var(--panel);border-left:1px solid var(--line);overflow-y:auto}
   .sect{border-bottom:1px solid var(--line)}
   .sect h3{margin:0;padding:10px 12px;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none}
@@ -55,6 +69,12 @@
   .item .meta{font-family:var(--mono);font-size:10px;color:var(--dim)}
   .item .x{color:var(--dim);padding:0 2px}
   .item .x:hover{color:var(--bad)}
+  .item .vis{flex:none;color:var(--accent);padding:0 4px;cursor:pointer}
+  .item.hidden{opacity:.45}
+  .item.hidden .vis{color:var(--dim)}
+  .grphdr{display:flex;justify-content:space-between;align-items:center;padding:7px 8px 4px;margin-top:6px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}
+  .grphdr .gn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .grphdr .vis{cursor:pointer;color:var(--accent);padding-left:6px}
   .mini{display:flex;gap:6px;margin:6px 0}
   .mini .btn{flex:1;text-align:center;padding:6px}
   .hint{color:var(--dim);font-size:11px;line-height:1.5;margin:4px 0}
@@ -66,20 +86,16 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand">SurroundPanner <small>· tk Audio Services</small></span>
-  <input class="title" id="projName" value="Untitled show" title="Project name">
-  <button class="btn toggle on" id="modeObjects">Move objects</button>
-  <button class="btn toggle" id="modeRoom">Edit room</button>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.8.0</small></span>
+  <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <span class="spacer"></span>
-  <button class="btn" id="btnExport">Export</button>
-  <button class="btn" id="btnImport">Import</button>
-  <input type="file" id="fileImport" accept="application/json" style="display:none">
+  <span class="lastsent" id="hdrSent" title="last command sent to REAPER">—</span>
   <div class="status"><span class="dot" id="connDot"></span><span id="connTxt">bridge offline</span></div>
 </div>
 
 <div class="layout">
   <div class="views">
-    <div class="viewbox" id="topView"><span class="label">TOP — X (L/R) · Y (FRONT/REAR)</span><canvas id="cTop"></canvas></div>
+    <div class="viewbox" id="topView"><span class="label">TOP — X (L/R) · Y (FRONT/REAR)</span><img class="tkwm" src="assets/tk_logo.png" alt="tk Audio Services"><canvas id="cTop"></canvas></div>
     <div class="viewbox" id="frontView"><span class="label">FRONT — X (L/R) · Z (HEIGHT)</span><canvas id="cFront"></canvas></div>
   </div>
 
@@ -89,25 +105,16 @@
       <h3>Objects <span class="chev">▾</span></h3>
       <div class="body">
         <div class="list" id="objList"></div>
-        <div class="mini">
-          <button class="btn" id="addObj">+ Add object</button>
-        </div>
+        <div class="hint" id="objHint">Objects are your REAPER tracks — they load automatically while <span class="kbd">SurroundPanner_Live.lua</span> is running. The name shown is the track name.</div>
         <div id="objEditor" style="display:none">
-          <div class="row"><label>Name</label><input type="text" id="oName"></div>
+          <div class="row"><label>Name</label><input type="text" id="oName" readonly title="From the REAPER track name"></div>
           <div class="row"><label>X · L/R</label><input type="range" id="oX" min="-1" max="1" step="0.001"><span class="val" id="oXv">0</span></div>
           <div class="row"><label>Y · F/R</label><input type="range" id="oY" min="-1" max="1" step="0.001"><span class="val" id="oYv">0</span></div>
           <div class="row"><label>Z · Height</label><input type="range" id="oZ" min="0" max="1" step="0.001"><span class="val" id="oZv">0</span></div>
           <div class="row"><label>Gain</label><input type="range" id="oG" min="0" max="1" step="0.001"><span class="val" id="oGv">1.0</span></div>
-          <h3 style="cursor:default;padding-left:0">OSC mapping → REAPER</h3>
-          <div class="hint">Sends normalised 0–1 to <span class="kbd">/track/&lt;t&gt;/fx/&lt;f&gt;/fxparam/&lt;p&gt;/value</span>. Find param indices in REAPER by toggling the plugin's <span class="kbd">UI</span> button.</div>
-          <div class="grid2">
-            <div class="row"><label>Track</label><input type="number" id="oT" min="1" step="1"></div>
-            <div class="row"><label>FX</label><input type="number" id="oF" min="1" step="1"></div>
-            <div class="row"><label>X param</label><input type="number" id="oPX" min="0" step="1"></div>
-            <div class="row"><label>Y param</label><input type="number" id="oPY" min="0" step="1"></div>
-            <div class="row"><label>Z param</label><input type="number" id="oPZ" min="0" step="1"></div>
-            <div class="row"><label>Gain param</label><input type="number" id="oPG" min="0" step="1"></div>
-          </div>
+          <div class="row"><label>LFE send</label><input type="range" id="oL" min="0" max="1" step="0.001"><span class="val" id="oLv">0.0</span></div>
+          <div class="mini"><button class="btn" id="oTest">Test · sweep X</button></div>
+          <div class="hint">Sweeps this object's X across the room so you can confirm the link — watch it move in REAPER. The track, FX and parameter mapping are filled in automatically by the Live script.</div>
         </div>
       </div>
     </div>
@@ -118,30 +125,23 @@
       <div class="body">
         <div class="row"><label>Preset</label>
           <select id="preset">
-            <option value="">— load preset —</option>
+            <option value="">— choose layout —</option>
             <option value="stereo">Stereo</option>
-            <option value="quad">Quad</option>
             <option value="5.1">5.1</option>
             <option value="7.1">7.1</option>
             <option value="7.1.4">7.1.4 (Atmos)</option>
-            <option value="isa">L-ISA-style frontal scene</option>
           </select>
         </div>
-        <div class="grid2">
-          <div class="row"><label>Width m</label><input type="number" id="rW" min="1" step="0.1" value="10"></div>
-          <div class="row"><label>Depth m</label><input type="number" id="rD" min="1" step="0.1" value="10"></div>
-          <div class="row"><label>Height m</label><input type="number" id="rH" min="1" step="0.1" value="4"></div>
-        </div>
-        <div class="hint">In <b>Edit room</b> mode: drag speakers in the views, or click empty space in the top view to add one. Select a speaker to edit its name/position.</div>
+        <div class="hint">Speakers feed the panner live. Speaker <b>#n drives REAPER output channel n</b> — order matters. X/Y −1…1, Z 0…1; tick LFE for a non‑positional channel.</div>
         <div class="list" id="spkList"></div>
-        <div class="mini"><button class="btn" id="addSpk">+ Add speaker</button><button class="btn" id="clrSpk">Clear all</button></div>
+        <div class="mini"><button class="btn" id="addSpk">+ Add speaker</button></div>
         <div id="spkEditor" style="display:none">
           <div class="row"><label>Name</label><input type="text" id="sName"></div>
           <div class="grid2">
             <div class="row"><label>X</label><input type="number" id="sX" min="-1" max="1" step="0.01"></div>
             <div class="row"><label>Y</label><input type="number" id="sY" min="-1" max="1" step="0.01"></div>
             <div class="row"><label>Z</label><input type="number" id="sZ" min="0" max="1" step="0.01"></div>
-            <div class="row"><label>Out ch</label><input type="number" id="sCh" min="1" step="1"></div>
+            <div class="row"><label>LFE</label><input type="checkbox" id="sLfe"></div>
           </div>
         </div>
       </div>
@@ -151,10 +151,18 @@
     <div class="sect collapsed" id="sPanner">
       <h3>Panner law <span class="chev">▾</span></h3>
       <div class="body">
-        <div class="hint">DBAP (distance-based amplitude panning): every object feeds every speaker, weighted by distance, constant-power normalised. The latch lines show which speakers actually carry the signal.</div>
-        <div class="row"><label>Rolloff</label><input type="range" id="pRoll" min="0.5" max="4" step="0.1"><span class="val" id="pRollv">2.0</span></div>
-        <div class="row"><label>Blur</label><input type="range" id="pBlur" min="0.001" max="0.6" step="0.001"><span class="val" id="pBlurv">0.10</span></div>
-        <div class="row"><label>Line cut</label><input type="range" id="pThr" min="0.01" max="0.5" step="0.01"><span class="val" id="pThrv">0.08</span></div>
+        <div class="hint">DBAP (distance-based amplitude panning): every object feeds every speaker, weighted by distance, constant-power normalised. <b>Focus</b> tightens each object onto its nearest speakers; <b>Spread</b> widens it across more. The latch lines (links + thicknesses) follow both.</div>
+        <div class="row"><label>Focus</label><input type="range" id="pRoll" min="0" max="100" step="1"><span class="val" id="pRollv">43%</span></div>
+        <div class="row"><label>Spread</label><input type="range" id="pBlur" min="0" max="100" step="1"><span class="val" id="pBlurv">15%</span></div>
+      </div>
+    </div>
+
+    <!-- OUTPUT METERS -->
+    <div class="sect collapsed" id="sMeters">
+      <h3>Output meters <span class="chev">▾</span></h3>
+      <div class="body">
+        <div id="meterList"></div>
+        <div class="hint">Live level per speaker (named from the room). Play in REAPER to see them move.</div>
       </div>
     </div>
 
@@ -163,9 +171,10 @@
       <h3>REAPER connection <span class="chev">▾</span></h3>
       <div class="body">
         <div class="row"><label>Bridge URL</label><input type="text" id="bUrl" value="http://localhost:9000"></div>
-        <div class="mini"><button class="btn primary" id="btnConnect">Connect / test</button></div>
-        <div class="hint" id="connHint">Run the Python bridge (<span class="kbd">reaper_bridge.py</span>), then click connect. The bridge relays positions to REAPER over OSC. While disconnected, everything still works for design — only the live link is off.</div>
+        <div class="mini"><button class="btn primary" id="btnConnect">Connect / test</button><button class="btn" id="btnPull">Reload from REAPER</button></div>
+        <div class="hint" id="connHint">In REAPER, run <span class="kbd">SurroundPanner_Live.lua</span> and start the bridge. Objects load automatically and moves apply straight to REAPER — no OSC setup, no Import/Export.</div>
         <div class="row"><label>Send rate</label><input type="range" id="bRate" min="10" max="60" step="5"><span class="val" id="bRatev">30</span></div>
+        <div class="row"><label>Follow</label><input type="checkbox" id="bFollow"><span class="hint" style="margin:0">mirror REAPER's own moves back into the UI (polls the live scene)</span></div>
       </div>
     </div>
   </div>
@@ -187,34 +196,33 @@ let state = {
   room:{w:10,d:10,h:4},
   speakers:[],
   objects:[],
-  panner:{rolloff:2.0, blur:0.10, threshold:0.08},
+  panner:{rolloff:2.0, blur:0.10, threshold:0.02},   // threshold: fixed faint-line hide (no UI control)
   bridge:{url:"http://localhost:9000", connected:false, rate:30},
+  tracks:[],
   selObj:null, selSpk:null, mode:"objects"
 };
+let activeDragId=null;   // object id being dragged — pollState won't overwrite it
 
 //============================================================ presets (x:-1..1 L/R, y:-1..1 rear..front, z:0..1)
+// [name, x, y, z, lfe] — order = REAPER output-channel order (incl. LFE gap). Speaker #i drives channel i+1.
 const PRESETS = {
-  stereo:[['L',-0.7,1,0],['R',0.7,1,0]],
-  quad:[['L',-0.8,0.9,0],['R',0.8,0.9,0],['Ls',-0.8,-0.9,0],['Rs',0.8,-0.9,0]],
-  '5.1':[['L',-0.8,1,0],['C',0,1,0],['R',0.8,1,0],['Ls',-0.9,-0.8,0],['Rs',0.9,-0.8,0]],
-  '7.1':[['L',-0.8,1,0],['C',0,1,0],['R',0.8,1,0],['Lss',-1,0,0],['Rss',1,0,0],['Lsr',-0.7,-1,0],['Rsr',0.7,-1,0]],
-  '7.1.4':[['L',-0.8,1,0],['C',0,1,0],['R',0.8,1,0],['Lss',-1,0,0],['Rss',1,0,0],['Lsr',-0.7,-1,0],['Rsr',0.7,-1,0],
-           ['Ltf',-0.6,0.6,1],['Rtf',0.6,0.6,1],['Ltr',-0.6,-0.6,1],['Rtr',0.6,-0.6,1]],
-  isa:[['A1',-1,1,0.2],['A2',-0.6,1,0.2],['A3',-0.2,1,0.2],['A4',0.2,1,0.2],['A5',0.6,1,0.2],['A6',1,1,0.2],
-       ['Ls',-1,-0.2,0.1],['Rs',1,-0.2,0.1],['Lr',-0.5,-1,0.1],['Rr',0.5,-1,0.1],
-       ['Lt',-0.5,0.4,1],['Rt',0.5,0.4,1]]
+  stereo:[['L',-0.7,1,0,0],['R',0.7,1,0,0]],
+  '5.1':[['L',-0.8,1,0,0],['R',0.8,1,0,0],['C',0,1,0,0],['LFE',0,0,0,1],['Ls',-0.9,-0.8,0,0],['Rs',0.9,-0.8,0,0]],
+  '7.1':[['L',-0.8,1,0,0],['R',0.8,1,0,0],['C',0,1,0,0],['LFE',0,0,0,1],['Lss',-1,0,0,0],['Rss',1,0,0,0],['Lsr',-0.7,-1,0,0],['Rsr',0.7,-1,0,0]],
+  '7.1.4':[['L',-0.8,1,0,0],['R',0.8,1,0,0],['C',0,1,0,0],['LFE',0,0,0,1],['Lss',-1,0,0,0],['Rss',1,0,0,0],['Lsr',-0.7,-1,0,0],['Rsr',0.7,-1,0,0],['Ltf',-0.6,0.6,1,0],['Rtf',0.6,0.6,1,0],['Ltr',-0.6,-0.6,1,0],['Rtr',0.6,-0.6,1,0]]
 };
 function loadPreset(name){
   const p = PRESETS[name]; if(!p) return;
-  state.speakers = p.map((s,i)=>({id:uid(), name:s[0], x:s[1], y:s[2], z:s[3], ch:i+1}));
+  state.speakers = p.map((s,i)=>({id:uid(), name:s[0], x:s[1], y:s[2], z:s[3], lfe:s[4]||0, ch:i+1}));
   state.selSpk = null;
-  renderAll();
+  renderAll(); pushRoom();
 }
 
 //============================================================ DBAP panning
 function computeGains(obj){
   const eps = state.panner.blur;
   const raw = state.speakers.map(s=>{
+    if(s.lfe) return 0;   // LFE is non-positional — no latch line, matches the JSFX
     const dx=obj.x-s.x, dy=obj.y-s.y, dz=(obj.z-s.z);
     const d = Math.sqrt(dx*dx+dy*dy+dz*dz) + eps;
     return 1/Math.pow(d, state.panner.rolloff);
@@ -259,7 +267,7 @@ function render(){
   // TOP VIEW
   drawGrid(ctxT,T.w,T.h);
   // latch lines
-  state.objects.forEach(o=>{
+  state.objects.forEach(o=>{ if(o.visible===false) return;
     const g=computeGains(o); const [ox,oy]=topXY(o.x,o.y,T.w,T.h);
     state.speakers.forEach((s,i)=>{ if(g[i]<state.panner.threshold) return;
       const [sx,sy]=topXY(s.x,s.y,T.w,T.h);
@@ -271,7 +279,7 @@ function render(){
   // speakers
   state.speakers.forEach(s=>{ const [sx,sy]=topXY(s.x,s.y,T.w,T.h); drawSpeaker(ctxT,sx,sy,s.name, s.id===state.selSpk); });
   // objects
-  state.objects.forEach(o=>{ const [ox,oy]=topXY(o.x,o.y,T.w,T.h);
+  state.objects.forEach(o=>{ if(o.visible===false) return; const [ox,oy]=topXY(o.x,o.y,T.w,T.h);
     ctxT.beginPath(); ctxT.arc(ox,oy,o.id===state.selObj?9:7,0,7); ctxT.fillStyle=o.color; ctxT.fill();
     if(o.id===state.selObj){ ctxT.strokeStyle='#fff'; ctxT.lineWidth=2; ctxT.stroke(); }
     ctxT.fillStyle='#0c0f13'; ctxT.font='bold 9px sans-serif'; ctxT.textAlign='center'; ctxT.textBaseline='middle';
@@ -280,7 +288,7 @@ function render(){
 
   // FRONT VIEW (x vs z)
   drawGrid(ctxF,F.w,F.h);
-  state.objects.forEach(o=>{
+  state.objects.forEach(o=>{ if(o.visible===false) return;
     const g=computeGains(o); const [ox,oz]=frontXZ(o.x,o.z,F.w,F.h);
     state.speakers.forEach((s,i)=>{ if(g[i]<state.panner.threshold) return;
       const [sx,sz]=frontXZ(s.x,s.z,F.w,F.h);
@@ -289,7 +297,7 @@ function render(){
     }); ctxF.globalAlpha=1;
   });
   state.speakers.forEach(s=>{ const [sx,sz]=frontXZ(s.x,s.z,F.w,F.h); drawSpeaker(ctxF,sx,sz,s.name, s.id===state.selSpk); });
-  state.objects.forEach(o=>{ const [ox,oz]=frontXZ(o.x,o.z,F.w,F.h);
+  state.objects.forEach(o=>{ if(o.visible===false) return; const [ox,oz]=frontXZ(o.x,o.z,F.w,F.h);
     ctxF.beginPath(); ctxF.arc(ox,oz,o.id===state.selObj?8:6,0,7); ctxF.fillStyle=o.color; ctxF.fill();
     if(o.id===state.selObj){ ctxF.strokeStyle='#fff'; ctxF.lineWidth=2; ctxF.stroke(); }
   });
@@ -306,14 +314,12 @@ function bindCanvas(cv, ctx, kind){
   const rect=()=>cv.getBoundingClientRect();
   cv.addEventListener('mousedown', e=>{
     const r=rect(), w=r.width, h=r.height, mx=e.clientX-r.left, my=e.clientY-r.top;
-    const mapO = kind==='top' ? o=>topXY(o.x,o.y,w,h) : o=>frontXZ(o.x,o.z,w,h);
-    const mapS = kind==='top' ? s=>topXY(s.x,s.y,w,h) : s=>frontXZ(s.x,s.z,w,h);
-    if(state.mode==='objects'){
-      const o=pick(state.objects,mx,my,mapO,w,h); if(o){ selectObject(o.id); dragging={type:'obj',item:o}; }
+    if(state.mode==='room'){
+      const mapS = kind==='top' ? s=>topXY(s.x,s.y,w,h) : s=>frontXZ(s.x,s.z,w,h);
+      const s=pick(state.speakers,mx,my,mapS,w,h); if(s){ selectSpeaker(s.id); dragging={type:'spk',item:s}; }
     } else {
-      const s=pick(state.speakers,mx,my,mapS,w,h);
-      if(s){ selectSpeaker(s.id); dragging={type:'spk',item:s}; }
-      else if(kind==='top'){ const [x,y]=topInv(mx,my,w,h); const ns={id:uid(),name:'Spk'+(state.speakers.length+1),x,y,z:0,ch:state.speakers.length+1}; state.speakers.push(ns); selectSpeaker(ns.id); dragging={type:'spk',item:ns}; renderLists(); }
+      const mapO = kind==='top' ? o=>topXY(o.x,o.y,w,h) : o=>frontXZ(o.x,o.z,w,h);
+      const o=pick(state.objects.filter(x=>x.visible!==false),mx,my,mapO,w,h); if(o){ selectObject(o.id); dragging={type:'obj',item:o}; activeDragId=o.id; }
     }
     render();
   });
@@ -323,39 +329,63 @@ function bindCanvas(cv, ctx, kind){
     const it=dragging.item;
     if(kind==='top'){ const [x,y]=topInv(mx,my,w,h); it.x=x; it.y=y; }
     else { const [x,z]=frontInv(mx,my,w,h); it.x=x; it.z=z; }
-    if(dragging.type==='obj'){ syncObjEditor(); scheduleSend(it); }
-    else syncSpkEditor();
+    if(dragging.type==='spk'){ syncSpkEditor(); pushRoom(); }
+    else { syncObjEditor(); scheduleSend(it, kind==='top'?'xy':'xz'); }
     render();
   });
-  window.addEventListener('mouseup', ()=>{ if(dragging&&dragging.type==='obj') sendObject(dragging.item); dragging=null; });
+  window.addEventListener('mouseup', ()=>{ if(dragging){ if(dragging.type==='obj') sendObject(dragging.item, kind==='top'?'xy':'xz'); else pushRoom(); } dragging=null; activeDragId=null; });
 }
 
-//============================================================ OSC send (throttled)
+//============================================================ OSC send (throttled, self-healing)
 let sendTimer=0, pending=null;
-function scheduleSend(o){ pending=o; const gap=1000/state.bridge.rate; const now=performance.now();
-  if(now-sendTimer>gap){ sendTimer=now; sendObject(o); } }
-async function sendObject(o){
-  if(!state.bridge.connected || !o.osc) return;
+function scheduleSend(o, axes){ pending=o; const gap=1000/state.bridge.rate; const now=performance.now();
+  if(now-sendTimer>gap){ sendTimer=now; sendObject(o, axes); } }
+function showSent(addr,value,ok){ const t=(ok?'✓ ':'✗ ')+addr+' = '+value.toFixed(3);
+  const el=$('sentTxt'); if(el) el.textContent=t; const h=$('hdrSent'); if(h) h.textContent=t; }
+async function postOSC(msgs){
+  try{ const r=await fetch(state.bridge.url+'/osc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs})}); setConn(r.ok); return r.ok; }
+  catch(err){ setConn(false); return false; }
+}
+async function sendObject(o, axes){
+  if(!o.osc) return;   // attempt regardless of 'connected' — the link self-heals on success/failure
+  axes = axes || 'xyzgl';
   const m=o.osc, msgs=[];
   const add=(p,v)=>{ if(p!==''&&p!=null&&!isNaN(p)) msgs.push({addr:`/track/${m.track}/fx/${m.fx}/fxparam/${p}/value`, value:v}); };
-  add(m.px,(o.x+1)/2); add(m.py,(o.y+1)/2); add(m.pz,o.z); add(m.pg,o.gain);
+  if(axes.includes('x')) add(m.px,(1-o.x)/2);   // X inverted — REAPER scene X is mirrored vs the view
+  if(axes.includes('y')) add(m.py,(o.y+1)/2);
+  if(axes.includes('z')) add(m.pz,o.z);
+  if(axes.includes('g')) add(m.pg,o.gain);
+  if(axes.includes('l')) add(m.pl,o.lfe||0);    // per-object LFE send (tag 10)
   if(!msgs.length) return;
-  try{ await fetch(state.bridge.url+'/osc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs})}); }
-  catch(err){ setConn(false); }
+  const ok=await postOSC(msgs); showSent((o.name?o.name+' → ':'')+msgs[0].addr,msgs[0].value,ok);
+}
+async function sendRaw(addr,value){ const ok=await postOSC([{addr,value}]); showSent(addr,value,ok); }
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function testSweep(){ const o=cur(); if(!o){ alert('Select an object first.'); return; }
+  const addr=`/track/${o.osc.track}/fx/${o.osc.fx}/fxparam/${o.osc.px}/value`;
+  for(const v of [0,0.25,0.5,0.75,1,0.5]){ await sendRaw(addr,v); await sleep(140); } }
+
+//============================================================ follow REAPER (read-back)
+let followTimer=null;
+function setFollow(on){ if(on && !followTimer){ followTimer=setInterval(pollState,200); } else if(!on && followTimer){ clearInterval(followTimer); followTimer=null; } }
+async function pollState(){ if(!state.bridge.connected) return;   // 'Follow' — mirror REAPER moves from the live session
+  let d; try{ const r=await fetch(state.bridge.url+'/session'); if(!r.ok)return; d=await r.json(); }catch(e){ return; }
+  if(!d.objects) return;
+  const byTrack={}; d.objects.forEach(s=>{ if(s.osc) byTrack[s.osc.track]=s; });
+  let changed=false;
+  state.objects.forEach(o=>{ if(o.id===activeDragId) return; const s=byTrack[o.osc.track]; if(!s) return;
+    if(typeof s.x==='number' && Math.abs(s.x-o.x)>1e-4){ o.x=s.x; changed=true; }
+    if(typeof s.y==='number' && Math.abs(s.y-o.y)>1e-4){ o.y=s.y; changed=true; }
+    if(typeof s.z==='number' && Math.abs(s.z-o.z)>1e-4){ o.z=s.z; changed=true; } });
+  if(changed){ render(); if(cur())syncObjEditor(); }
 }
 
 //============================================================ object / speaker CRUD
-function addObject(){
-  const i=state.objects.length;
-  const o={id:uid(), name:'Object '+(i+1), x:0,y:0,z:0, gain:1, color:PALETTE[i%PALETTE.length],
-           osc:{track:i+1, fx:1, px:0, py:1, pz:2, pg:''}};
-  state.objects.push(o); selectObject(o.id); renderAll();
-}
-function delObject(id){ state.objects=state.objects.filter(o=>o.id!==id); if(state.selObj===id)state.selObj=null; renderAll(); }
+// objects are created by REAPER (one per track), not in the UI — see applyImport()
 function selectObject(id){ state.selObj=id; state.selSpk=null; syncObjEditor(); renderLists(); }
-function addSpeaker(){ const i=state.speakers.length; const s={id:uid(),name:'Spk'+(i+1),x:0,y:0,z:0,ch:i+1}; state.speakers.push(s); selectSpeaker(s.id); renderAll(); }
-function delSpeaker(id){ state.speakers=state.speakers.filter(s=>s.id!==id); if(state.selSpk===id)state.selSpk=null; renderAll(); }
 function selectSpeaker(id){ state.selSpk=id; syncSpkEditor(); renderLists(); }
+function addSpeaker(){ state.speakers.push({id:uid(),name:'Spk'+(state.speakers.length+1),x:0,y:0,z:0,lfe:0,ch:state.speakers.length+1}); selectSpeaker(state.speakers[state.speakers.length-1].id); renderAll(); pushRoom(); }
+function delSpeaker(id){ state.speakers=state.speakers.filter(s=>s.id!==id); state.speakers.forEach((s,i)=>s.ch=i+1); if(state.selSpk===id)state.selSpk=null; renderAll(); pushRoom(); }
 
 //============================================================ editors <-> state
 function syncObjEditor(){
@@ -366,99 +396,199 @@ function syncObjEditor(){
   $('oY').value=o.y; $('oYv').textContent=o.y.toFixed(2);
   $('oZ').value=o.z; $('oZv').textContent=o.z.toFixed(2);
   $('oG').value=o.gain; $('oGv').textContent=o.gain.toFixed(2);
-  $('oT').value=o.osc.track; $('oF').value=o.osc.fx;
-  $('oPX').value=o.osc.px; $('oPY').value=o.osc.py; $('oPZ').value=o.osc.pz; $('oPG').value=o.osc.pg;
+  $('oL').value=o.lfe||0; $('oLv').textContent=(o.lfe||0).toFixed(2);
 }
-function syncSpkEditor(){
-  const s=state.speakers.find(x=>x.id===state.selSpk);
-  $('spkEditor').style.display = s?'block':'none'; if(!s) return;
-  $('sName').value=s.name; $('sX').value=s.x.toFixed(2); $('sY').value=s.y.toFixed(2); $('sZ').value=s.z.toFixed(2); $('sCh').value=s.ch;
+function syncSpkEditor(){ const s=state.speakers.find(x=>x.id===state.selSpk); const e=$('spkEditor'); if(!e) return;
+  e.style.display = s?'block':'none'; if(!s) return;
+  $('sName').value=s.name; $('sX').value=(+s.x).toFixed(2); $('sY').value=(+s.y).toFixed(2); $('sZ').value=(+s.z).toFixed(2); $('sLfe').checked=!!s.lfe;
 }
+// speaker editor removed — speakers are read-only, derived from the track layout
 function renderLists(){
-  // objects
   const ol=$('objList'); ol.innerHTML='';
-  state.objects.forEach((o,i)=>{ const d=document.createElement('div'); d.className='item'+(o.id===state.selObj?' sel':'');
-    d.innerHTML=`<span class="sw" style="background:${o.color}"></span><span class="nm">${i+1}. ${o.name}</span><span class="meta">T${o.osc.track}</span><span class="x">✕</span>`;
-    d.onclick=e=>{ if(e.target.classList.contains('x')){delObject(o.id);} else selectObject(o.id); };
-    ol.appendChild(d); });
-  // speakers
-  const sl=$('spkList'); sl.innerHTML='';
-  state.speakers.forEach(s=>{ const d=document.createElement('div'); d.className='item'+(s.id===state.selSpk?' sel':'');
-    d.innerHTML=`<span class="nm">${s.name}</span><span class="meta">${s.x.toFixed(1)},${s.y.toFixed(1)},${s.z.toFixed(1)} · ch${s.ch}</span><span class="x">✕</span>`;
-    d.onclick=e=>{ if(e.target.classList.contains('x')){delSpeaker(s.id);} else selectSpeaker(s.id); };
-    sl.appendChild(d); });
+  const groups={}, order=[];
+  state.objects.forEach((o,i)=>{ const g=o.group||'Objects'; if(!groups[g]){groups[g]=[];order.push(g);} groups[g].push([o,i]); });
+  const multi = order.length>1 || (order.length===1 && order[0]!=='Objects');   // show headers only when grouped
+  order.forEach(gname=>{
+    const arr=groups[gname];
+    if(multi){
+      const allHidden=arr.every(([o])=>o.visible===false);
+      const h=document.createElement('div'); h.className='grphdr';
+      h.innerHTML=`<span class="gn">${gname}</span><span class="vis" title="show / hide group">${allHidden?'○':'●'}</span>`;
+      h.querySelector('.vis').onclick=()=>{ const show=arr.every(([o])=>o.visible===false); arr.forEach(([o])=>o.visible=show); renderLists(); render(); };
+      ol.appendChild(h);
+    }
+    arr.forEach(([o,i])=>{ const d=document.createElement('div'); d.className='item'+(o.id===state.selObj?' sel':'')+(o.visible===false?' hidden':'');
+      d.innerHTML=`<span class="sw" style="background:${o.color}"></span><span class="nm">${i+1}. ${o.name}</span><span class="meta">T${o.osc.track}</span><span class="vis" title="show / hide">${o.visible===false?'○':'●'}</span>`;
+      d.onclick=e=>{ if(e.target.classList.contains('vis')){ o.visible=(o.visible===false); renderLists(); render(); } else selectObject(o.id); };
+      ol.appendChild(d); });
+  });
+  // speakers (the room)
+  const sl=$('spkList'); if(sl){ sl.innerHTML='';
+    state.speakers.forEach(s=>{ const d=document.createElement('div'); d.className='item'+(s.id===state.selSpk?' sel':'');
+      d.innerHTML=`<span class="nm">${s.name}${s.lfe?' · LFE':''}</span><span class="meta">${(+s.x).toFixed(1)},${(+s.y).toFixed(1)},${(+s.z).toFixed(1)} · ch${s.ch}</span><span class="x">✕</span>`;
+      d.onclick=e=>{ if(e.target.classList.contains('x')){delSpeaker(s.id);} else selectSpeaker(s.id); };
+      sl.appendChild(d); });
+  }
 }
-function renderAll(){ renderLists(); syncObjEditor(); syncSpkEditor(); render(); }
+function renderAll(){ renderLists(); syncObjEditor(); syncSpkEditor(); renderMeters(); render(); }
+let meterFills=[];
+function renderMeters(){ const ml=$('meterList'); if(!ml) return; ml.innerHTML=''; meterFills=[];
+  state.speakers.forEach(s=>{ const row=document.createElement('div'); row.className='mtr';
+    row.innerHTML=`<span class="mlbl">${s.name}${s.lfe?' · LFE':''}</span><div class="mbar"><div class="mfill"></div></div>`;
+    ml.appendChild(row); meterFills.push(row.querySelector('.mfill')); }); }
+function dbPct(v){ if(v<=0) return 0; const db=20*Math.log10(v); return Math.max(0,Math.min(100,(db+60)/60*100)); }
+async function pollLevels(){ if(!state.bridge.connected) return;
+  let d; try{ const r=await fetch(state.bridge.url+'/levels'); if(!r.ok)return; d=await r.json(); }catch(e){ return; }
+  const lv=d.levels||[];
+  meterFills.forEach((el,i)=>{ const v=lv[i]||0, p=dbPct(v);
+    el.style.width=p+'%'; el.style.background = v>=0.99?'var(--bad)' : (p>80?'var(--warn)':'var(--accent2)'); });
+}
 
 //============================================================ wire up inputs
 function num(el){ const v=parseFloat(el.value); return isNaN(v)?0:v; }
-$('oName').oninput=e=>{ const o=cur(); if(o){o.name=e.target.value; renderLists();} };
-['oX','oY','oZ','oG'].forEach(id=>$(id).oninput=e=>{ const o=cur(); if(!o)return; const v=parseFloat(e.target.value);
-  if(id==='oX')o.x=v; if(id==='oY')o.y=v; if(id==='oZ')o.z=v; if(id==='oG')o.gain=v;
-  $(id+'v').textContent=v.toFixed(2); scheduleSend(o); render(); });
-['oX','oY','oZ','oG'].forEach(id=>$(id).onchange=()=>{ const o=cur(); if(o)sendObject(o); });
-const oscMap={oT:'track',oF:'fx',oPX:'px',oPY:'py',oPZ:'pz',oPG:'pg'};
-Object.keys(oscMap).forEach(id=>$(id).oninput=e=>{ const o=cur(); if(!o)return; const raw=e.target.value;
-  o.osc[oscMap[id]] = raw===''?'':parseInt(raw,10); renderLists(); });
+// object name is read-only — it mirrors the REAPER track name
+['oX','oY','oZ','oG','oL'].forEach(id=>$(id).oninput=e=>{ const o=cur(); if(!o)return; const v=parseFloat(e.target.value);
+  if(id==='oX')o.x=v; if(id==='oY')o.y=v; if(id==='oZ')o.z=v; if(id==='oG')o.gain=v; if(id==='oL')o.lfe=v;
+  $(id+'v').textContent=v.toFixed(2); scheduleSend(o,{oX:'x',oY:'y',oZ:'z',oG:'g',oL:'l'}[id]); render(); });
+['oX','oY','oZ','oG','oL'].forEach(id=>$(id).onchange=()=>{ const o=cur(); if(o)sendObject(o); });
 function cur(){ return state.objects.find(x=>x.id===state.selObj); }
 
-$('sName').oninput=e=>{ const s=curS(); if(s){s.name=e.target.value; renderLists(); render();} };
-['sX','sY','sZ','sCh'].forEach(id=>$(id).oninput=e=>{ const s=curS(); if(!s)return; const v=parseFloat(e.target.value);
-  if(id==='sX')s.x=v; if(id==='sY')s.y=v; if(id==='sZ')s.z=v; if(id==='sCh')s.ch=v; renderLists(); render(); });
+$('oTest').onclick=testSweep;
+$('addSpk').onclick=addSpeaker;
+$('preset').onchange=e=>{ if(e.target.value){ loadPreset(e.target.value); e.target.value=''; } };
 function curS(){ return state.speakers.find(x=>x.id===state.selSpk); }
+$('sName').oninput=e=>{ const s=curS(); if(s){ s.name=e.target.value; renderLists(); } };
+['sX','sY','sZ'].forEach(id=>$(id).oninput=e=>{ const s=curS(); if(!s)return; const v=parseFloat(e.target.value)||0;
+  if(id==='sX')s.x=v; if(id==='sY')s.y=v; if(id==='sZ')s.z=v; render(); pushRoom(); });
+$('sLfe').onchange=e=>{ const s=curS(); if(s){ s.lfe=e.target.checked?1:0; renderLists(); render(); pushRoom(); } };
+let roomTimer=0;
+function pushRoom(){ clearTimeout(roomTimer); roomTimer=setTimeout(()=>{
+  const sp=state.speakers.map(s=>({x:+(+s.x).toFixed(4),y:+(+s.y).toFixed(4),z:+(+s.z).toFixed(4),lfe:s.lfe?1:0}));
+  fetch(state.bridge.url+'/room',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({speakers:sp})}).catch(()=>{});
+},150); }
+function setMode(m){ state.mode=m; const b=$('modeRoom'); if(b) b.classList.toggle('on', m==='room'); render(); }
+$('modeRoom').onclick=()=>setMode(state.mode==='room'?'objects':'room');
+// The room is defined by the user (preset + Edit-room), not derived from REAPER track channel
+// counts. The UI pushes it to the plug-in and the Live script grows each track and its bus to
+// match, so the room — not a track's transient channel width — is the single source of truth.
 
-$('addObj').onclick=addObject; $('addSpk').onclick=addSpeaker;
-$('clrSpk').onclick=()=>{ state.speakers=[]; state.selSpk=null; renderAll(); };
-$('preset').onchange=e=>{ if(e.target.value){loadPreset(e.target.value); e.target.value='';} };
-['rW','rD','rH'].forEach(id=>$(id).oninput=e=>{ const k={rW:'w',rD:'d',rH:'h'}[id]; state.room[k]=num(e.target); });
+// panner law — Focus/Spread are shown as 0-100% and mapped to the JSFX native ranges
+// (Focus -> rolloff 0.5..4, Spread -> blur 0.01..0.6). Both drive the latch-line view AND every
+// object's plug-in (rolloff -> tag 8, blur -> tag 9), so what you see stays what you hear.
+const focusToRoll  = p => 0.5 + (p/100)*3.5,  rollToFocus  = r => Math.round((r-0.5)/3.5*100);
+const spreadToBlur = p => 0.01 + (p/100)*0.59, blurToSpread = b => Math.round((b-0.01)/0.59*100);
+$('pRoll').oninput=e=>{ const p=parseFloat(e.target.value); state.panner.rolloff=focusToRoll(p); $('pRollv').textContent=p+'%'; render(); pushLaw(); };
+$('pBlur').oninput=e=>{ const p=parseFloat(e.target.value); state.panner.blur=spreadToBlur(p); $('pBlurv').textContent=p+'%'; render(); pushLaw(); };
+let lawTimer=0;
+function pushLaw(){ clearTimeout(lawTimer); lawTimer=setTimeout(()=>{
+  const targets=state.objects.filter(o=>o.osc), msgs=[], h=$('hdrSent');
+  targets.forEach(o=>{ const m=o.osc;
+    msgs.push({addr:`/track/${m.track}/fx/${m.fx}/fxparam/8/value`, value:state.panner.rolloff});
+    msgs.push({addr:`/track/${m.track}/fx/${m.fx}/fxparam/9/value`, value:state.panner.blur}); });
+  if(!msgs.length){ if(h) h.textContent='law: no objects — add tk SurroundPanner to a track'; return; }
+  postOSC(msgs).then(ok=>{ if(h) h.textContent=(ok?'✓ ':'✗ ')+`law → ${targets.length} obj · roll ${state.panner.rolloff.toFixed(1)} · blur ${state.panner.blur.toFixed(2)}`; });
+},120); }
 
-// panner
-const pmap={pRoll:'rolloff',pBlur:'blur',pThr:'threshold'};
-Object.keys(pmap).forEach(id=>$(id).oninput=e=>{ const v=parseFloat(e.target.value); state.panner[pmap[id]]=v;
-  $(id+'v').textContent= id==='pRoll'?v.toFixed(1):v.toFixed(2); render(); });
-
-// mode toggles
-$('modeObjects').onclick=()=>setMode('objects');
-$('modeRoom').onclick=()=>setMode('room');
-function setMode(m){ state.mode=m; $('modeObjects').classList.toggle('on',m==='objects'); $('modeRoom').classList.toggle('on',m==='room');
-  if(m==='room'){ $('sRoom').classList.remove('collapsed'); } }
+// object move is the only canvas interaction now; the room is read-only
 
 // section collapse
 document.querySelectorAll('.sect h3').forEach(h=>{ if(h.style.cursor==='default')return; h.onclick=()=>h.parentElement.classList.toggle('collapsed'); });
 
-$('projName').oninput=e=>state.project=e.target.value;
-
 // connection
 function setConn(ok){ state.bridge.connected=ok; $('connDot').classList.toggle('ok',ok); $('connTxt').textContent= ok?'bridge online':'bridge offline'; }
 $('btnConnect').onclick=async()=>{ state.bridge.url=$('bUrl').value.replace(/\/$/,'');
-  try{ const r=await fetch(state.bridge.url+'/ping'); setConn(r.ok); $('connHint').textContent = r.ok?'Connected. Object moves now stream to REAPER over OSC.':'Bridge responded but not OK.'; }
-  catch(err){ setConn(false); $('connHint').textContent='Could not reach the bridge. Is reaper_bridge.py running on '+state.bridge.url+' ?'; } };
+  const up=await ping();
+  if(!up){ $('connHint').textContent='Could not reach the bridge. Is reaper_bridge.py running on '+state.bridge.url+' ?'; return; }
+  if(bridgeVersion<4){ $('connHint').innerHTML='⚠ Bridge out of date — quit that bridge window and relaunch, then reload.'; return; }
+  const ok=await pullSession(false);
+  if(ok) $('connHint').textContent='Connected — session loaded from REAPER.'; };
 $('bRate').oninput=e=>{ state.bridge.rate=parseInt(e.target.value,10); $('bRatev').textContent=e.target.value; };
+$('bFollow').onchange=e=>setFollow(e.target.checked);
 
-// export / import
-$('btnExport').onclick=()=>{ const data=JSON.stringify({project:state.project,room:state.room,speakers:state.speakers,objects:state.objects,panner:state.panner},null,2);
-  const b=new Blob([data],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b);
-  a.download=(state.project||'show').replace(/\s+/g,'_')+'.spp.json'; a.click(); };
-$('btnImport').onclick=()=>$('fileImport').click();
-$('fileImport').onchange=e=>{ const f=e.target.files[0]; if(!f)return; const rd=new FileReader();
-  rd.onload=()=>{ try{ const d=JSON.parse(rd.result); state.project=d.project||state.project; state.room=d.room||state.room;
-    state.speakers=d.speakers||[]; state.objects=d.objects||[]; state.panner=Object.assign(state.panner,d.panner||{});
-    state.objects.forEach((o,i)=>{ if(!o.color)o.color=PALETTE[i%PALETTE.length]; if(!o.osc)o.osc={track:i+1,fx:1,px:0,py:1,pz:2,pg:''}; });
-    state.selObj=null; state.selSpk=null;
-    $('projName').value=state.project; $('rW').value=state.room.w; $('rD').value=state.room.d; $('rH').value=state.room.h;
-    $('pRoll').value=state.panner.rolloff; $('pBlur').value=state.panner.blur; $('pThr').value=state.panner.threshold;
-    $('pRollv').textContent=state.panner.rolloff.toFixed(1); $('pBlurv').textContent=state.panner.blur.toFixed(2); $('pThrv').textContent=state.panner.threshold.toFixed(2);
-    renderAll(); }catch(err){ alert('Could not read file: '+err.message); } };
-  rd.readAsText(f); e.target.value=''; };
+function applyImport(d){
+  state.project=d.project||state.project;
+  if(d.tracks) state.tracks=d.tracks;
+  if(d.room) state.room=d.room;
+  if(d.speakers) state.speakers=d.speakers;
+  if(d.objects) state.objects=d.objects;
+  state.panner=Object.assign(state.panner,d.panner||{});
+  const n=state.objects.length||1;
+  state.objects.forEach((o,i)=>{
+    if(!o.id) o.id=uid();
+    if(o.visible===undefined) o.visible=true;
+    if(typeof o.x!=='number'||typeof o.y!=='number'){ const a=(i/n)*Math.PI*2 - Math.PI/2; o.x=+(0.45*Math.cos(a)).toFixed(3); o.y=+(0.45*Math.sin(a)).toFixed(3); }   // fan out if no position
+    if(typeof o.z!=='number') o.z=0;
+    if(typeof o.gain!=='number') o.gain=1;
+    if(typeof o.lfe!=='number') o.lfe=0;
+    if(!o.color) o.color=PALETTE[i%PALETTE.length];
+    if(!o.osc) o.osc={track:i+1,fx:1,px:4,py:5,pz:6,pg:7,pl:10};   // tk SurroundPanner: X/Y/Z/Gain/LFE param tags
+    if(o.osc.pl==null) o.osc.pl=10;   // LFE-send tag (sessions from older Live scripts omit it)
+  });
+  // Objects REAPER reports stacked at the exact default origin (never placed) get fanned onto
+  // a ring so each is individually grabbable. Objects with a real placement — including
+  // legitimate clusters away from centre — are left exactly where REAPER/the user put them, so
+  // a live session refresh (track add/remove) never yanks positions around. The fan is
+  // deterministic (track order), so unplaced objects don't jitter between refreshes.
+  const atOrigin=state.objects.filter(o=>Math.abs(o.x)<1e-4 && Math.abs(o.y)<1e-4);
+  if(atOrigin.length>1) atOrigin.forEach((o,k)=>{
+    const a=(k/atOrigin.length)*Math.PI*2 - Math.PI/2;
+    o.x=+(0.4*Math.cos(a)).toFixed(3); o.y=+(0.4*Math.sin(a)).toFixed(3); });
+  // The room is user/preset-defined and authoritative: the UI pushes it to the plug-in and the
+  // Live script grows each track + its bus to match. It is NOT derived from a track's channel
+  // count — doing that collapsed a 12-speaker room to stereo whenever the first track briefly
+  // reported 2 channels, which is why the Output meters only ever showed channels 1 & 2.
+  state.selObj=null; state.selSpk=null;
+  $('pRoll').value=rollToFocus(state.panner.rolloff); $('pBlur').value=blurToSpread(state.panner.blur);
+  $('pRollv').textContent=rollToFocus(state.panner.rolloff)+'%'; $('pBlurv').textContent=blurToSpread(state.panner.blur)+'%';
+  renderAll(); pushRoom(); pushLaw();   // sync the law to every freshly-loaded object's plugin
+}
+// file import/export removed — the Live script keeps the UI in sync with REAPER
+let lastTrackSig='';
+const trackSig=d=>(d.objects||[]).map(o=>o.osc&&o.osc.track).join(',');
+async function pullSession(silent){ const base=$('bUrl').value.replace(/\/$/,'');
+  try{ const s=await fetch(base+'/session'); if(!s.ok){ if(!silent)alert('No session found — run SurroundPanner_Live.lua in REAPER first.'); return false; }
+    const d=await s.json(); applyImport(d); lastTrackSig=trackSig(d);
+    $('connHint').textContent='Loaded session from REAPER — '+((d.objects||[]).length)+' object(s).'; return true; }
+  catch(err){ if(!silent)alert('Could not reach the bridge.'); return false; } }
+$('btnPull').onclick=()=>pullSession(false);
+async function watchTracks(){ if(!state.bridge.connected) return;   // live-update: track add/remove (full reload) + rename/colour/group (in place)
+  let d; try{ const r=await fetch(state.bridge.url+'/session'); if(!r.ok)return; d=await r.json(); }catch(e){ return; }
+  if(!d.objects) return;
+  const setSig=d.objects.map(o=>o.osc&&o.osc.track).join(',');
+  if(setSig!==lastTrackSig){ lastTrackSig=setSig; applyImport(d); return; }
+  let changed=false; const byT={}; d.objects.forEach(o=>{ if(o.osc) byT[o.osc.track]=o; });
+  state.objects.forEach(o=>{ const s=byT[o.osc.track]; if(!s)return;
+    if(s.name!==o.name){ o.name=s.name; changed=true; }
+    if(s.color && s.color!==o.color){ o.color=s.color; changed=true; }
+    if((s.group||'')!==(o.group||'')){ o.group=s.group; changed=true; } });
+  if(changed){ renderLists(); render(); }
+}
+let bridgeVersion=0;
+async function ping(){ try{ const r=await fetch(state.bridge.url+'/ping'); if(!r.ok){setConn(false);return false;}
+  const j=await r.json().catch(()=>({})); bridgeVersion=j.version||0; setConn(true); return true; }catch(e){ setConn(false); return false; } }
+async function autoStart(){
+  state.bridge.url=$('bUrl').value.replace(/\/$/,'');
+  let up=false;
+  for(let i=0;i<8 && !up;i++){ up=await ping(); if(!up) await sleep(400); }   // bridge may still be booting
+  if(!up){ $('connHint').textContent='Bridge not reachable — start it with the launcher, then reload this page.'; setInterval(ping,3000); return; }
+  if(bridgeVersion<4){ $('connHint').innerHTML='⚠ The running bridge is out of date — quit that bridge window and relaunch, then reload this page.'; }
+  else { const ok=await pullSession(true);
+    $('connHint').textContent = ok ? 'Connected — session loaded from REAPER.'
+      : 'Connected, but no session yet — run SurroundPanner_Live.lua in REAPER and add the tk SurroundPanner plug‑in to a track.'; }
+  setInterval(ping, 3000);   // keep the indicator honest if the bridge starts/stops later
+  setInterval(watchTracks, 2000);   // auto-update when REAPER tracks are added/removed
+  setInterval(pollLevels, 80);      // ~12 Hz output meters
+}
 
 //============================================================ init
 bindCanvas(cTop,ctxT,'top'); bindCanvas(cFront,ctxF,'front');
 window.addEventListener('resize', render);
-$('pRoll').value=2; $('pBlur').value=0.10; $('pThr').value=0.08; $('bRate').value=30;
+$('pRoll').value=rollToFocus(state.panner.rolloff); $('pRollv').textContent=rollToFocus(state.panner.rolloff)+'%';
+$('pBlur').value=blurToSpread(state.panner.blur); $('pBlurv').textContent=blurToSpread(state.panner.blur)+'%';
+$('bRate').value=30;
 loadPreset('7.1.4');
-addObject();
-setMode('objects');
 render();
+autoStart();   // auto-connect to the bridge and load the live session + objects, if running
 </script>
 </body>
 </html>

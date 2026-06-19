@@ -110,3 +110,9 @@ build/
 # *.aif
 # *.aiff
 # *.flac
+# tkSurroundPanner IPC runtime files (written live; never source)
+session.json
+cmds.json
+room.json
+levels.json
+live_error.log

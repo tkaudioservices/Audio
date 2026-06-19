@@ -1,0 +1,64 @@
+# Changelog — tkSurroundPanner
+
+Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
+mirrored by the bridge's `/ping` protocol version.
+
+## v0.8.0
+- **Panner law now actually reaches the plug-in.** The Live script was writing parameters with `TrackFX_SetParam`, whose out-of-0..1 handling silently no-ops some plug-ins (the classic "Rolloff won't move" trap). It now sets through `TrackFX_SetParamNormalized`, reading each slider's live min/max from the FX — so Focus/Spread (and X/Y/Z/Gain/LFE) land reliably.
+- **Focus & Spread, in meaningful units.** "Rolloff" → **Focus** and "Blur" → **Spread**, both shown as **0–100 %** (mapped to the JSFX ranges). "Line cut" is gone — faint links auto-hide at a fixed threshold, and Spread now visibly drives the latch-line links and thicknesses.
+- **Per-object LFE send.** Each object gets an **LFE send** fader: a low-passed (~120 Hz) mono feed routed to the room's LFE channel(s). (LFE is still excluded from the positional pan.)
+- **Speaker check moved into the plug-in.** Removed the web *Speaker check* panel and the `/noise` IPC. **`tk SurroundNoise`** is now self-contained: **Test noise** on/off, **Speaker channel** (0 = all), and **Level in dB** — right on the plug-in. It still publishes to the shared meters, so the web Output meters confirm it.
+- **Plug-in meters removed.** The panner's on-plug-in bar meters are gone (they fed nothing the web UI doesn't); a compact X/Y/Z/LFE + Gain/Focus/Spread readout remains. The web Output meters are unchanged.
+- **Favicon** points at the tk mark with a PNG fallback so it renders in the tab.
+
+## v0.7.0
+- **Speaker check (per-speaker pink noise).** New **`tk SurroundNoise`** JSFX — drop one on your immersive bus — plus a *Speaker check* panel in the web UI. Click a speaker to send pink noise to just that output channel, or **All speakers**, with a level fader. It's driven from the UI (browser → `/noise` → `noise.json` → Live script → shared memory) and publishes into the same meter region as the panner, so the Output meters confirm it. Built for lining up, level-matching and verifying a real rig during system setup. Stopping the Live script (or hitting **Off**) silences it. Press play in REAPER so the bus processes audio.
+- Installer now copies **both** JSFX into `Effects/tk`.
+
+## v0.6.2
+- **Output meters now show every speaker, not just L/R.** The web UI was rebuilding the room from the first track's channel count on each session load; a freshly-added panner track reports 2 channels (before the Live script widens it), which silently collapsed a 12-speaker room to stereo — so the meter panel only ever showed channels 1 & 2. The room is now treated as user/preset-defined and authoritative (it's already pushed to the plug-in and the Live script grows tracks/bus to match), so all speaker meters display. *(Verified headless: a session with a 2-channel track now renders 12 meter rows with channels 3–12 live.)*
+- **Live session refresh no longer scrambles object positions.** Adding/removing a REAPER track used to re-fan every object onto a ring on reload; now only objects REAPER reports at the exact default origin (never placed) are fanned out for grabbability — real placements are left untouched.
+- **Panner-law feedback + range parity.** The header now confirms each law send (`✓ law → N obj · roll · blur`) and warns when no panner object is loaded. The UI Blur slider minimum (was 0.001) now matches the JSFX Spread minimum (0.01), so no value is silently clamped. *(The law transport/mapping was already correct — `TrackFX_SetParam` takes the native range — so this is observability + parity, not a transport fix.)*
+- **Robustness.** The Live script clamps the speaker layout it writes into shared memory to the JSFX's 16-output maximum, so an oversized room can never overwrite the meter region in `gmem`.
+- *Get the fixes: reload the web UI, and re-run the `SurroundPanner_Live.lua` action (stop + start) so REAPER loads the new script. The JSFX logic is unchanged in 0.6.2 — re-running the installer only refreshes the version label.*
+
+## v0.6.1
+- **Panner law now drives the engine** — Rolloff and Blur in the web UI are sent to every object's JSFX (previously they only changed the on-screen latch lines). Per-object Gain is wired up too.
+- **Web meters read straight from the panner** — output meters now come from the JSFX via shared memory (`gmem`), so they match the in-plugin display exactly and no longer depend on the bus being routed as a multichannel folder.
+- The in-plugin display also shows the live Gain / Rolloff / Spread values, so law changes are visible in REAPER.
+- **UI cleanup** — removed the vestigial "OSC mapping" panel and the stale Scan/OSC-feedback hints; the track/fx/param mapping is filled in automatically by the Live script. Docs (README / WORKFLOW) rewritten to match the current architecture.
+
+## v0.6.0
+- **In-plugin meters** — the JSFX now has its own display (`@gfx`): one bar per output channel plus a live X/Y/Z readout, so you can see the panner working right in REAPER.
+- **Output meters** — live level per speaker in the web UI, named from the room (read off the bus).
+- **Auto channel count** — the Live script widens each panner track (and its bus) to the speaker count.
+- **Installer** — `Install tkSurroundPanner.command` / `.bat` copies the JSFX into REAPER's `Effects/tk`.
+- Shared runtime files moved to REAPER's resource folder (`…/REAPER/tkSurroundPanner`) so the Live script can run from anywhere.
+- Folder `reaper-scripts` renamed to `engine`.
+
+## v0.5.0
+- **Custom rooms** — define speaker positions (any count/shape) in the web UI; the
+  `tk SurroundPanner` JSFX reads the layout live from REAPER shared memory (`gmem`).
+- **Edit room mode** — toggle from the header to drag speakers on the canvas.
+- **Live updates** — renaming, recolouring or regrouping a REAPER track updates the
+  UI automatically (no reload). Track add/remove still triggers a full refresh.
+- Presets corrected to REAPER channel order (with the LFE gap); LFE is non‑positional.
+
+## v0.4.0
+- **Own panner engine** — `tk_SurroundPanner.jsfx` (DBAP) replaces ReaSurroundPan,
+  which ignored external parameter writes until hand‑touched.
+- `SurroundPanner_Live.lua` drives the JSFX sliders directly (reliable on every
+  track). No OSC device, no Import/Export. REAPER console silenced.
+
+## v0.3.0
+- Folder‑based grouping, track‑colour sync, hide/show objects.
+- One‑click `.command` launcher with stale‑bridge detection; bridge version check.
+- Real tk logo + favicon.
+
+## v0.2.0
+- Bidirectional bridge, `session.json` auto‑load, scan/import of ReaSurroundPan.
+- REAPER setup/scan scripts; workflow docs.
+
+## v0.1.0
+- Web control surface: room + draggable objects + DBAP latch‑line view.
+- Python OSC bridge.

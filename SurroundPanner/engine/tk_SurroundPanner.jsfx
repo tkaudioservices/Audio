@@ -1,0 +1,116 @@
+desc:tk SurroundPanner v0.8.0
+//  tk Audio Services — object panner for tkSurroundPanner
+//  2 in -> up to 16 out. DBAP, matching the web UI's latch-line view.
+//  Speaker layout is read live from shared memory (set by SurroundPanner_Live.lua
+//  from the web UI's room editor); falls back to a built-in 7.1.4 if none is set.
+//  Speaker index i drives output channel i+1. A speaker flagged LFE is excluded from the
+//  positional pan and instead receives the per-object LFE send (a low-passed mono feed).
+
+options:gmem=tkSurroundPanner
+
+slider1:0<-1,1,0.0001>X  (left -1 .. right +1)
+slider2:0<-1,1,0.0001>Y  (rear -1 .. front +1)
+slider3:0<0,1,0.0001>Z  (floor 0 .. ceiling 1)
+slider4:1<0,1,0.0001>Gain
+slider5:2<0.5,4,0.01>Rolloff
+slider6:0.1<0.01,0.6,0.0001>Spread
+slider7:0<0,1,0.0001>LFE send
+
+in_pin:source L
+in_pin:source R
+out_pin:1
+out_pin:2
+out_pin:3
+out_pin:4
+out_pin:5
+out_pin:6
+out_pin:7
+out_pin:8
+out_pin:9
+out_pin:10
+out_pin:11
+out_pin:12
+out_pin:13
+out_pin:14
+out_pin:15
+out_pin:16
+
+@init
+MAXOUT = 16;
+kx = 10000; ky = 10100; kz = 10200; klfe = 10300; kg = 10400; mpk = 10500;   // active layout + meter peaks (local mem)
+dkx = 11000; dky = 11100; dkz = 11200; dklfe = 11300;            // built-in default (7.1.4)
+NDEF = 12;
+MB = 100;   // gmem meter base: gmem[MB+ch] = peak per output, shared with the Lua / web UI
+lpk = 1 - exp(-2*$pi*120 / srate);   // 1-pole low-pass coeff (~120 Hz) for the LFE send
+lpz = 0;
+
+function dspk(i x y z lf) ( dkx[i]=x; dky[i]=y; dkz[i]=z; dklfe[i]=lf; );
+dspk(0, -0.8, 1.0, 0.0, 0);  dspk(1,  0.8, 1.0, 0.0, 0);  dspk(2, 0.0, 1.0, 0.0, 0);
+dspk(3,  0.0, 0.0, 0.0, 1);  // LFE (channel 4)
+dspk(4, -1.0, 0.0, 0.0, 0);  dspk(5,  1.0, 0.0, 0.0, 0);
+dspk(6, -0.7,-1.0, 0.0, 0);  dspk(7,  0.7,-1.0, 0.0, 0);
+dspk(8, -0.6, 0.6, 1.0, 0);  dspk(9,  0.6, 0.6, 1.0, 0);
+dspk(10,-0.6,-0.6, 1.0, 0);  dspk(11, 0.6,-0.6, 1.0, 0);
+
+NSPK = NDEF;
+
+// gmem layout:  gmem[0]=count, then per speaker i: x,y,z,lfe at gmem[1+i*4 ..+3]
+function loadlayout() local(n i) (
+  n = gmem[0];
+  (n >= 1 && n <= MAXOUT) ? (
+    NSPK = n;
+    i = 0; loop(NSPK,
+      kx[i]=gmem[1+i*4]; ky[i]=gmem[2+i*4]; kz[i]=gmem[3+i*4]; klfe[i]=gmem[4+i*4]; i+=1; );
+  ) : (
+    NSPK = NDEF;
+    i = 0; loop(NSPK, kx[i]=dkx[i]; ky[i]=dky[i]; kz[i]=dkz[i]; klfe[i]=dklfe[i]; i+=1; );
+  );
+);
+
+function calcgains() local(ox oy oz og roll blur i dx dy dz dd gg ss nn) (
+  ox=slider1; oy=slider2; oz=slider3; og=slider4; roll=slider5; blur=slider6;
+  ss=0; i=0;
+  loop(NSPK,
+    klfe[i] ? ( kg[i]=0; ) : (
+      dx=ox-kx[i]; dy=oy-ky[i]; dz=oz-kz[i];
+      dd=sqrt(dx*dx+dy*dy+dz*dz)+blur;
+      gg=pow(dd, -roll);
+      kg[i]=gg; ss+=gg*gg;
+    );
+    i+=1;
+  );
+  nn=sqrt(ss);
+  nn>0 ? ( i=0; loop(NSPK, klfe[i] ? 0 : ( kg[i]=kg[i]/nn*og ); i+=1; ); );
+);
+
+loadlayout();
+calcgains();
+
+@slider
+calcgains();
+
+@block
+loadlayout();
+calcgains();
+// publish per-output peaks to shared memory (max across all instances), then decay the hold
+i = 0; loop(NSPK, gmem[MB + i] = max(gmem[MB + i], mpk[i]); mpk[i] *= 0.85; i += 1; );
+
+@sample
+mix = (spl0 + spl1) * 0.5;
+lpz = lpz + lpk*(mix - lpz);                    // low-passed mono, for the LFE send (always run)
+lfeamt = slider7;
+i = 0; loop(MAXOUT, spl(i) = 0; i += 1; );      // clear outputs
+i = 0; loop(NSPK,
+  klfe[i] ? ( spl(i) = lpz * lfeamt; )          // LFE channel: low-passed per-object send
+          : ( spl(i) = mix * kg[i]; );          // positional channels: DBAP
+  v = abs(spl(i)); v > mpk[i] ? mpk[i] = v;      // peak per output, for the web UI meters
+  i += 1;
+);
+
+@gfx 360 84
+gfx_set(0.04,0.05,0.06,1); gfx_rect(0,0,gfx_w,gfx_h);
+gfx_setfont(1,"Arial",13);
+gfx_set(0.85,0.9,0.95,1); gfx_x=8; gfx_y=8;  gfx_drawstr("tk SurroundPanner");
+gfx_set(0.55,0.60,0.66,1);
+gfx_x=8; gfx_y=32; sprintf(#r,"X %.2f   Y %.2f   Z %.2f   LFE %.2f",slider1,slider2,slider3,slider7); gfx_drawstr(#r);
+gfx_x=8; gfx_y=50; sprintf(#r,"Gain %.2f   Rolloff %.2f   Spread %.3f",slider4,slider5,slider6); gfx_drawstr(#r);
