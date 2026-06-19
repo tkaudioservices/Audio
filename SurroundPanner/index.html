@@ -86,7 +86,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.9.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.10.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <span class="spacer"></span>
   <span class="lastsent" id="hdrSent" title="last command sent to REAPER">—</span>
@@ -113,6 +113,11 @@
           <div class="row"><label>Z · Height</label><input type="range" id="oZ" min="0" max="1" step="0.001"><span class="val" id="oZv">0</span></div>
           <div class="row"><label>Gain</label><input type="range" id="oG" min="0" max="1" step="0.001"><span class="val" id="oGv">1.0</span></div>
           <div class="row"><label>LFE send</label><input type="range" id="oL" min="0" max="1" step="0.001"><span class="val" id="oLv">0.0</span></div>
+          <div class="hint" style="margin-top:8px">Effect — animates this object in the plug‑in, so it renders to file. Orbit / Oscillate / Drift move it; Spread widens it across more speakers.</div>
+          <div class="row"><label>Effect</label><select id="oFx"><option value="0">Off</option><option value="1">Orbit</option><option value="2">Oscillate</option><option value="3">Spread / size</option><option value="4">Random drift</option></select></div>
+          <div class="row"><label>Rate · Hz</label><input type="range" id="oFr" min="0" max="5" step="0.05"><span class="val" id="oFrv">0.3</span></div>
+          <div class="row"><label>Depth</label><input type="range" id="oFd" min="0" max="1" step="0.01"><span class="val" id="oFdv">0.3</span></div>
+          <div class="row"><label>Axis</label><select id="oFa" title="Oscillate axis"><option value="0">X · L/R</option><option value="1">Y · F/R</option><option value="2">Z · Height</option></select></div>
           <div class="mini"><button class="btn" id="oTest">Test · sweep X</button></div>
           <div class="hint">Sweeps this object's X across the room so you can confirm the link — watch it move in REAPER. The track, FX and parameter mapping are filled in automatically by the Live script.</div>
         </div>
@@ -247,6 +252,23 @@ function computeGains(obj){
   return raw.map(g=>(g/norm)*obj.gain);
 }
 
+//============================================================ effects engine (preview)
+// The effect runs for real in the JSFX (so it renders); this mirrors the motion in the view.
+// Orbit/Oscillate are phase-exact; Drift is an approximation (the plug-in's is random).
+function effPos(o){
+  if(!o.effect) return {x:o.x,y:o.y,z:o.z};
+  const t=performance.now()/1000, ph=2*Math.PI*(o.rate||0)*t, d=o.depth||0;
+  let x=o.x,y=o.y,z=o.z;
+  if(o.effect===1){ x=o.x+d*Math.cos(ph); y=o.y+d*Math.sin(ph); }                       // orbit
+  else if(o.effect===2){ const s=d*Math.sin(ph); o.axis===0?x+=s:o.axis===1?y+=s:z+=s; } // oscillate
+  else if(o.effect===4){ x=o.x+d*Math.sin(ph*0.7); y=o.y+d*Math.cos(ph*0.53); }          // drift (approx)
+  return {x:clamp(x),y:clamp(y),z:clamp(z,0,1)};                                          // effect 3 (spread) doesn't move
+}
+let fxAnim=false;
+const anyEffect=()=>state.objects.some(o=>o.effect>0 && o.visible!==false);
+function fxTick(){ if(!fxAnim) return; render(); requestAnimationFrame(fxTick); }
+function updateFxAnim(){ const need=anyEffect(); if(need&&!fxAnim){ fxAnim=true; requestAnimationFrame(fxTick); } else if(!need){ fxAnim=false; } }
+
 //============================================================ canvas
 const cTop=$('cTop'), cFront=$('cFront');
 const ctxT=cTop.getContext('2d'), ctxF=cFront.getContext('2d');
@@ -288,15 +310,27 @@ function drawCoverage(ctx,w,h){
     ctx.restore();
   });
 }
+// effect path/extent for an object (top view) — the area its motion/size covers, around the base
+function drawFxPath(ctx,o,w,h){
+  const [bx,by]=topXY(o.x,o.y,w,h), sxS=(w-2*PAD)/2, syS=(h-2*PAD)/2, d=o.depth||0;
+  ctx.save(); ctx.globalAlpha=0.5; ctx.strokeStyle=o.color; ctx.setLineDash([4,4]); ctx.lineWidth=1;
+  ctx.beginPath();
+  if(o.effect===1||o.effect===4){ ctx.ellipse(bx,by,Math.max(1,d*sxS),Math.max(1,d*syS),0,0,Math.PI*2); }          // orbit / drift bound
+  else if(o.effect===3){ ctx.ellipse(bx,by,Math.max(1,d*0.5*sxS),Math.max(1,d*0.5*syS),0,0,Math.PI*2); }            // spread / size
+  else if(o.effect===2){ o.axis===0 ? (ctx.moveTo(bx-d*sxS,by),ctx.lineTo(bx+d*sxS,by)) : o.axis===1 ? (ctx.moveTo(bx,by-d*syS),ctx.lineTo(bx,by+d*syS)) : ctx.arc(bx,by,4,0,Math.PI*2); }
+  ctx.stroke(); ctx.restore(); ctx.setLineDash([]);
+  // faint anchor at the base position
+  ctx.save(); ctx.globalAlpha=0.4; ctx.strokeStyle=o.color; ctx.beginPath(); ctx.arc(bx,by,3,0,Math.PI*2); ctx.stroke(); ctx.restore();
+}
 
 function render(){
   const T=fit(cTop), F=fit(cFront);
   // TOP VIEW
   drawGrid(ctxT,T.w,T.h);
   drawCoverage(ctxT,T.w,T.h);   // speaker footprints, behind the latch lines
-  // latch lines
+  // latch lines (from the effective, effect-modulated position)
   state.objects.forEach(o=>{ if(o.visible===false) return;
-    const g=computeGains(o); const [ox,oy]=topXY(o.x,o.y,T.w,T.h);
+    const p=effPos(o), g=computeGains(o.effect?Object.assign({},o,p):o); const [ox,oy]=topXY(p.x,p.y,T.w,T.h);
     state.speakers.forEach((s,i)=>{ if(g[i]<state.panner.threshold) return;
       const [sx,sy]=topXY(s.x,s.y,T.w,T.h);
       ctxT.strokeStyle=o.color; ctxT.globalAlpha=Math.min(1,g[i]); ctxT.lineWidth=Math.max(0.5,g[i]*4);
@@ -306,8 +340,10 @@ function render(){
   });
   // speakers
   state.speakers.forEach(s=>{ const [sx,sy]=topXY(s.x,s.y,T.w,T.h); drawSpeaker(ctxT,sx,sy,s.name, s.id===state.selSpk); });
-  // objects
-  state.objects.forEach(o=>{ if(o.visible===false) return; const [ox,oy]=topXY(o.x,o.y,T.w,T.h);
+  // objects (drawn at the effective position, with the effect path behind)
+  state.objects.forEach(o=>{ if(o.visible===false) return;
+    if(o.effect) drawFxPath(ctxT,o,T.w,T.h);
+    const p=effPos(o); const [ox,oy]=topXY(p.x,p.y,T.w,T.h);
     ctxT.beginPath(); ctxT.arc(ox,oy,o.id===state.selObj?9:7,0,7); ctxT.fillStyle=o.color; ctxT.fill();
     if(o.id===state.selObj){ ctxT.strokeStyle='#fff'; ctxT.lineWidth=2; ctxT.stroke(); }
     ctxT.fillStyle='#0c0f13'; ctxT.font='bold 9px sans-serif'; ctxT.textAlign='center'; ctxT.textBaseline='middle';
@@ -317,7 +353,7 @@ function render(){
   // FRONT VIEW (x vs z)
   drawGrid(ctxF,F.w,F.h);
   state.objects.forEach(o=>{ if(o.visible===false) return;
-    const g=computeGains(o); const [ox,oz]=frontXZ(o.x,o.z,F.w,F.h);
+    const p=effPos(o), g=computeGains(o.effect?Object.assign({},o,p):o); const [ox,oz]=frontXZ(p.x,p.z,F.w,F.h);
     state.speakers.forEach((s,i)=>{ if(g[i]<state.panner.threshold) return;
       const [sx,sz]=frontXZ(s.x,s.z,F.w,F.h);
       ctxF.strokeStyle=o.color; ctxF.globalAlpha=Math.min(1,g[i]); ctxF.lineWidth=Math.max(0.5,g[i]*3);
@@ -325,7 +361,7 @@ function render(){
     }); ctxF.globalAlpha=1;
   });
   state.speakers.forEach(s=>{ const [sx,sz]=frontXZ(s.x,s.z,F.w,F.h); drawSpeaker(ctxF,sx,sz,s.name, s.id===state.selSpk); });
-  state.objects.forEach(o=>{ if(o.visible===false) return; const [ox,oz]=frontXZ(o.x,o.z,F.w,F.h);
+  state.objects.forEach(o=>{ if(o.visible===false) return; const p=effPos(o); const [ox,oz]=frontXZ(p.x,p.z,F.w,F.h);
     ctxF.beginPath(); ctxF.arc(ox,oz,o.id===state.selObj?8:6,0,7); ctxF.fillStyle=o.color; ctxF.fill();
     if(o.id===state.selObj){ ctxF.strokeStyle='#fff'; ctxF.lineWidth=2; ctxF.stroke(); }
   });
@@ -387,6 +423,13 @@ async function sendObject(o, axes){
   if(!msgs.length) return;
   const ok=await postOSC(msgs); showSent((o.name?o.name+' → ':'')+msgs[0].addr,msgs[0].value,ok);
 }
+// effects engine params (tags 11-14) — sent together whenever an effect control changes
+async function sendFx(o){ if(!o.osc) return; const m=o.osc;
+  const mk=(p,v)=>({addr:`/track/${m.track}/fx/${m.fx}/fxparam/${p}/value`, value:v});
+  await postOSC([mk(m.pe,o.effect||0),mk(m.pr,o.rate||0),mk(m.pd,o.depth||0),mk(m.pa,o.axis||0)]);
+  const h=$('hdrSent'); if(h) h.textContent=`fx → ${o.name||'obj'}: ${['off','orbit','oscillate','spread','drift'][o.effect||0]}`;
+  updateFxAnim();
+}
 async function sendRaw(addr,value){ const ok=await postOSC([{addr,value}]); showSent(addr,value,ok); }
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function testSweep(){ const o=cur(); if(!o){ alert('Select an object first.'); return; }
@@ -425,6 +468,9 @@ function syncObjEditor(){
   $('oZ').value=o.z; $('oZv').textContent=o.z.toFixed(2);
   $('oG').value=o.gain; $('oGv').textContent=o.gain.toFixed(2);
   $('oL').value=o.lfe||0; $('oLv').textContent=(o.lfe||0).toFixed(2);
+  const rate=o.rate==null?0.3:o.rate, depth=o.depth==null?0.3:o.depth;
+  $('oFx').value=o.effect||0; $('oFr').value=rate; $('oFrv').textContent=rate.toFixed(2);
+  $('oFd').value=depth; $('oFdv').textContent=depth.toFixed(2); $('oFa').value=o.axis||0;
 }
 function syncSpkEditor(){ const s=state.speakers.find(x=>x.id===state.selSpk); const e=$('spkEditor'); if(!e) return;
   e.style.display = s?'block':'none'; if(!s) return;
@@ -459,7 +505,7 @@ function renderLists(){
       sl.appendChild(d); });
   }
 }
-function renderAll(){ renderLists(); syncObjEditor(); syncSpkEditor(); renderMeters(); render(); }
+function renderAll(){ renderLists(); syncObjEditor(); syncSpkEditor(); renderMeters(); render(); updateFxAnim(); }
 let meterFills=[];
 function renderMeters(){ const ml=$('meterList'); if(!ml) return; ml.innerHTML=''; meterFills=[];
   state.speakers.forEach(s=>{ const row=document.createElement('div'); row.className='mtr';
@@ -480,6 +526,11 @@ function num(el){ const v=parseFloat(el.value); return isNaN(v)?0:v; }
   if(id==='oX')o.x=v; if(id==='oY')o.y=v; if(id==='oZ')o.z=v; if(id==='oG')o.gain=v; if(id==='oL')o.lfe=v;
   $(id+'v').textContent=v.toFixed(2); scheduleSend(o,{oX:'x',oY:'y',oZ:'z',oG:'g',oL:'l'}[id]); render(); });
 ['oX','oY','oZ','oG','oL'].forEach(id=>$(id).onchange=()=>{ const o=cur(); if(o)sendObject(o); });
+// effects engine controls
+$('oFx').onchange=e=>{ const o=cur(); if(!o)return; o.effect=parseInt(e.target.value,10); sendFx(o); render(); };
+$('oFa').onchange=e=>{ const o=cur(); if(!o)return; o.axis=parseInt(e.target.value,10); sendFx(o); render(); };
+['oFr','oFd'].forEach(id=>$(id).oninput=e=>{ const o=cur(); if(!o)return; const v=parseFloat(e.target.value);
+  if(id==='oFr')o.rate=v; else o.depth=v; $(id+'v').textContent=v.toFixed(2); sendFx(o); render(); });
 function cur(){ return state.objects.find(x=>x.id===state.selObj); }
 
 $('oTest').onclick=testSweep;
@@ -541,7 +592,10 @@ function applyImport(d){
   if(d.tracks) state.tracks=d.tracks;
   if(d.room) state.room=d.room;
   if(d.speakers) state.speakers=d.speakers;
+  // the UI owns the effect settings (the session doesn't carry them) — keep them across a reload
+  const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis}; });
   if(d.objects) state.objects=d.objects;
+  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; } });
   state.panner=Object.assign(state.panner,d.panner||{});
   const n=state.objects.length||1;
   state.objects.forEach((o,i)=>{
@@ -551,9 +605,14 @@ function applyImport(d){
     if(typeof o.z!=='number') o.z=0;
     if(typeof o.gain!=='number') o.gain=1;
     if(typeof o.lfe!=='number') o.lfe=0;
+    if(typeof o.effect!=='number') o.effect=0;
+    if(typeof o.rate!=='number') o.rate=0.3;
+    if(typeof o.depth!=='number') o.depth=0.3;
+    if(typeof o.axis!=='number') o.axis=0;
     if(!o.color) o.color=PALETTE[i%PALETTE.length];
-    if(!o.osc) o.osc={track:i+1,fx:1,px:4,py:5,pz:6,pg:7,pl:10};   // tk SurroundPanner: X/Y/Z/Gain/LFE param tags
-    if(o.osc.pl==null) o.osc.pl=10;   // LFE-send tag (sessions from older Live scripts omit it)
+    if(!o.osc) o.osc={track:i+1,fx:1,px:4,py:5,pz:6,pg:7,pl:10,pe:11,pr:12,pd:13,pa:14};   // X/Y/Z/Gain/LFE + effect tags
+    if(o.osc.pl==null) o.osc.pl=10;                                  // older Live scripts omit these
+    if(o.osc.pe==null){ o.osc.pe=11; o.osc.pr=12; o.osc.pd=13; o.osc.pa=14; }
   });
   // Objects REAPER reports stacked at the exact default origin (never placed) get fanned onto
   // a ring so each is individually grabbable. Objects with a real placement — including

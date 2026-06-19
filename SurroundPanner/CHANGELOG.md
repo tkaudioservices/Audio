@@ -3,6 +3,10 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.10.0
+- **Effects engine (per-object motion).** Each object can run a movement effect, computed **inside the plug-in** so it renders to file: **Orbit** (circles a centre), **Oscillate** (sweeps along X/Y/Z), **Spread / size** (widens the object across more speakers), and **Random drift** (organic wander). Set Effect / Rate / Depth / Axis in the object editor. The web view **animates the object live** along its path (Orbit/Oscillate are phase-exact; Drift is an approximation since the plug-in's is random), and draws the effect's extent so you can see what it covers.
+- The latch lines and meters follow the moving object, so what you see tracks what you hear.
+
 ## v0.9.0
 - **Speaker coverage shapes.** Each speaker can be given an **elliptical footprint** (Cover W / Cover D / Angle in *Room & speakers*) marking the area it actually feeds. The DBAP gain to each speaker is now weighted by how far the object sits inside that speaker's ellipse, so the pan follows the real rig instead of leaking into speakers that don't cover an area. Coverage is **off by default** (0 = covers everywhere = unchanged behaviour); the ellipses draw on the top view, and the latch lines reflect the weighting. The identical weighting runs in the browser preview and the JSFX.
 - Under the hood: the per-speaker shared-memory block grew from 4 to 7 values (adds cw/cd/ca) and the meter base moved clear of it; the Live script now parses each speaker object independently (robust to field order / new keys).

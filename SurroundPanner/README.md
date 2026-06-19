@@ -108,6 +108,21 @@ you see is what you hear, provided the room here matches your REAPER speaker lay
 
 ---
 
+## Effects engine
+
+Each object can run a movement **effect**, computed **inside the plug‑in** so it renders to
+file (not just while the UI is open):
+
+- **Orbit** — circles the object around its position at a set rate/radius.
+- **Oscillate** — sweeps it back‑and‑forth along one axis (X, Y, or Z).
+- **Spread / size** — widens the object across more speakers (grows its field).
+- **Random drift** — gentle organic wander within a bound.
+
+Set **Effect / Rate / Depth / Axis** per object in the Objects panel. The web view animates the
+object live along its path and draws the effect's extent, and the latch lines + meters follow it
+— so what you see tracks what you hear. (Orbit/Oscillate are phase‑exact in the preview; Drift is
+an approximation, since the plug‑in's drift is randomised.)
+
 ## Rooms & speaker layouts
 
 The room takes **fully custom speaker placement**. Pick a preset as a starting point —
@@ -199,6 +214,10 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 | 8 | Focus → rolloff (`0.5…4`) | 4 | panner law (all objects) |
 | 9 | Spread → blur (`0.01…0.6`) | 5 | panner law (all objects) |
 | 10 | LFE send (`0…1`) | 6 | per object |
+| 11 | Effect (`0…4`: off/orbit/oscillate/spread/drift) | 7 | per object |
+| 12 | FX rate (Hz, `0…5`) | 8 | per object |
+| 13 | FX depth (`0…1`) | 9 | per object |
+| 14 | FX axis (`0…2`: X/Y/Z) | 10 | per object |
 
 **Shared memory** (`gmem` namespace `tkSurroundPanner`):
 
@@ -228,8 +247,9 @@ Endpoints: `GET /ping`, `/session`, `/levels`, static files; `POST /set` (object
 - [x] **Speaker coverage + pink noise** — ✅ per‑speaker pink‑noise solo (*Speaker check*, via
       `tk SurroundNoise` on the bus) and ✅ per‑speaker elliptical coverage footprints weighting
       the pan. (Future: union coverage across a group; couple it to object spread.)
-- [ ] **Multi‑channel sources / effect engine** — spread a stereo (or N‑channel) source
-      across the field with movement/FX (orbit, spread, centre‑of‑gravity), à la L‑ISA.
+- [x] **Per‑object effect engine** — Orbit / Oscillate / Spread / Random‑drift motion, computed
+      in the plug‑in so it renders; live‑animated in the view. (Future: multi‑channel source
+      spread with centre‑of‑gravity, à la L‑ISA.)
 - [ ] **Binaural mixdown** — a headphone render path for offline work: an HRTF convolver
       in the JSFX for monitoring, and an offline renderer for deliverables.
 - [ ] Position **automation** — record/playback object trajectories to REAPER envelopes.

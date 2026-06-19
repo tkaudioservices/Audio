@@ -1,4 +1,4 @@
-desc:tk SurroundPanner v0.9.0
+desc:tk SurroundPanner v0.10.0
 //  tk Audio Services — object panner for tkSurroundPanner
 //  2 in -> up to 16 out. DBAP, matching the web UI's latch-line view.
 //  Speaker layout is read live from shared memory (set by SurroundPanner_Live.lua
@@ -15,6 +15,10 @@ slider4:1<0,1,0.0001>Gain
 slider5:2<0.5,4,0.01>Rolloff
 slider6:0.1<0.01,0.6,0.0001>Spread
 slider7:0<0,1,0.0001>LFE send
+slider8:0<0,4,1{Off,Orbit,Oscillate,Spread,Drift}>Effect
+slider9:0.3<0,5,0.001>FX Rate (Hz)
+slider10:0.3<0,1,0.0001>FX Depth
+slider11:0<0,2,1{X,Y,Z}>FX Axis (Oscillate)
 
 in_pin:source L
 in_pin:source R
@@ -46,6 +50,7 @@ MB = 1000;  // gmem meter base: gmem[MB+ch] = peak per output, shared with the L
 STRIDE = 7; // per-speaker gmem block: x, y, z, lfe, cw, cd, ca
 lpk = 1 - exp(-2*$pi*120 / srate);   // 1-pole low-pass coeff (~120 Hz) for the LFE send
 lpz = 0;
+fxphase = 0; drx = 0; dry = 0; dtx = 0; dty = 0; driftn = 0;   // effects-engine LFO + drift state
 
 function dspk(i x y z lf) ( dkx[i]=x; dky[i]=y; dkz[i]=z; dklfe[i]=lf; );
 dspk(0, -0.8, 1.0, 0.0, 0);  dspk(1,  0.8, 1.0, 0.0, 0);  dspk(2, 0.0, 1.0, 0.0, 0);
@@ -85,8 +90,9 @@ function coverage(i ox oy) local(dx dy ca cs sn lx ly e) (
   ) : 1;
 );
 
-function calcgains() local(ox oy oz og roll blur i dx dy dz dd gg ss nn) (
-  ox=slider1; oy=slider2; oz=slider3; og=slider4; roll=slider5; blur=slider6;
+// Compute the per-speaker gains for an object at (ox,oy,oz). xblur widens the field (object size).
+function calcgains(ox oy oz xblur) local(og roll blur i dx dy dz dd gg ss nn) (
+  og=slider4; roll=slider5; blur=slider6 + xblur;
   ss=0; i=0;
   loop(NSPK,
     klfe[i] ? ( kg[i]=0; ) : (
@@ -101,15 +107,41 @@ function calcgains() local(ox oy oz og roll blur i dx dy dz dd gg ss nn) (
   nn>0 ? ( i=0; loop(NSPK, klfe[i] ? 0 : ( kg[i]=kg[i]/nn*og ); i+=1; ); );
 );
 
+// Effects engine: modulate the effective object position (and size) around the base X/Y/Z.
+// Runs in @block off a phase accumulator, so it renders and needs no UI. Writes ex/ey/ez/xblur.
+function applyfx() local(ft rate depth ax osc dt) (
+  ft = slider8|0; rate = slider9; depth = slider10; ax = slider11|0;
+  ex = slider1; ey = slider2; ez = slider3; xblur = 0;
+  ft > 0 ? (
+    dt = samplesblock / srate;
+    fxphase += 2*$pi*rate*dt; fxphase >= 2*$pi*1000 ? fxphase -= 2*$pi*1000;
+    ft == 1 ? (                                   // Orbit (X/Y)
+      ex = slider1 + depth*cos(fxphase); ey = slider2 + depth*sin(fxphase);
+    ) : ft == 2 ? (                               // Oscillate along an axis
+      osc = depth*sin(fxphase);
+      ax == 0 ? ex = slider1 + osc : ax == 1 ? ey = slider2 + osc : ez = slider3 + osc;
+    ) : ft == 3 ? (                               // Spread / size (widen the field)
+      xblur = depth*0.5;
+    ) : ft == 4 ? (                               // Random drift (smoothed)
+      driftn += samplesblock;
+      driftn >= srate*0.5 ? ( driftn = 0; dtx = (rand(2)-1)*depth; dty = (rand(2)-1)*depth; );
+      drx += 0.05*(dtx-drx); dry += 0.05*(dty-dry);
+      ex = slider1 + drx; ey = slider2 + dry;
+    );
+    ex = max(-1,min(1,ex)); ey = max(-1,min(1,ey)); ez = max(0,min(1,ez));
+  );
+);
+
 loadlayout();
-calcgains();
+calcgains(slider1, slider2, slider3, 0);
 
 @slider
-calcgains();
+calcgains(slider1, slider2, slider3, 0);
 
 @block
 loadlayout();
-calcgains();
+applyfx();
+calcgains(ex, ey, ez, xblur);
 // publish per-output peaks to shared memory (max across all instances), then decay the hold
 i = 0; loop(NSPK, gmem[MB + i] = max(gmem[MB + i], mpk[i]); mpk[i] *= 0.85; i += 1; );
 
@@ -125,10 +157,12 @@ i = 0; loop(NSPK,
   i += 1;
 );
 
-@gfx 360 84
+@gfx 360 104
 gfx_set(0.04,0.05,0.06,1); gfx_rect(0,0,gfx_w,gfx_h);
 gfx_setfont(1,"Arial",13);
 gfx_set(0.85,0.9,0.95,1); gfx_x=8; gfx_y=8;  gfx_drawstr("tk SurroundPanner");
 gfx_set(0.55,0.60,0.66,1);
 gfx_x=8; gfx_y=32; sprintf(#r,"X %.2f   Y %.2f   Z %.2f   LFE %.2f",slider1,slider2,slider3,slider7); gfx_drawstr(#r);
 gfx_x=8; gfx_y=50; sprintf(#r,"Gain %.2f   Rolloff %.2f   Spread %.3f",slider4,slider5,slider6); gfx_drawstr(#r);
+slider8==1 ? #fx="Orbit" : slider8==2 ? #fx="Oscillate" : slider8==3 ? #fx="Spread" : slider8==4 ? #fx="Drift" : #fx="off";
+gfx_x=8; gfx_y=72; sprintf(#r,"FX: %s   rate %.2f Hz   depth %.2f",#fx,slider9,slider10); gfx_drawstr(#r);

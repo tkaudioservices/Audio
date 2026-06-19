@@ -1,5 +1,5 @@
 --[[
-  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.9.0
+  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.10.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -116,6 +116,10 @@ local function applyCmds(insts)
       elseif pp == 8  then slider = 4; sval = val           -- Rolloff/Focus (0.5..4)  panner law (all objects)
       elseif pp == 9  then slider = 5; sval = val           -- Spread (0.01..0.6)      panner law (all objects)
       elseif pp == 10 then slider = 6; sval = val           -- LFE send (0..1)         per object
+      elseif pp == 11 then slider = 7; sval = val           -- Effect type (0..4)      per object
+      elseif pp == 12 then slider = 8; sval = val           -- FX rate (Hz)            per object
+      elseif pp == 13 then slider = 9; sval = val           -- FX depth (0..1)         per object
+      elseif pp == 14 then slider = 10; sval = val          -- FX axis (0..2)          per object
       end
       if slider then setparam(inst.tr, inst.fx, slider, sval) end
     end
@@ -137,10 +141,11 @@ local function buildSession()
       local z = reaper.TrackFX_GetParam(tr, fx, 2)
       local nch = math.floor(reaper.GetMediaTrackInfo_Value(tr, "I_NCHAN"))
       objs[#objs + 1] = string.format(
-        '{%s:%s,%s:%s,%s:%s,%s:%.4f,%s:%.4f,%s:%.4f,%s:{%s:%d,%s:%d,%s:4,%s:5,%s:6,%s:7,%s:10}}',
+        '{%s:%s,%s:%s,%s:%s,%s:%.4f,%s:%.4f,%s:%.4f,%s:{%s:%d,%s:%d,%s:4,%s:5,%s:6,%s:7,%s:10,%s:11,%s:12,%s:13,%s:14}}',
         jstr("name"), jstr(track_name(tr)), jstr("color"), jstr(track_color(tr)), jstr("group"), jstr(group),
         jstr("x"), x, jstr("y"), y, jstr("z"), z,
-        jstr("osc"), jstr("track"), oscT, jstr("fx"), fx + 1, jstr("px"), jstr("py"), jstr("pz"), jstr("pg"), jstr("pl"))
+        jstr("osc"), jstr("track"), oscT, jstr("fx"), fx + 1, jstr("px"), jstr("py"), jstr("pz"), jstr("pg"), jstr("pl"),
+        jstr("pe"), jstr("pr"), jstr("pd"), jstr("pa"))
       tracks[#tracks + 1] = string.format('{%s:%d,%s:%s,%s:%d}',
         jstr("track"), oscT, jstr("name"), jstr(track_name(tr)), jstr("nch"), nch)
     end

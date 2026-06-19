@@ -70,7 +70,8 @@ is wired to the channel you think it is. Flip **Test noise** off to silence.
 
 Drag objects in the top view (X/Y) and front view (X/Z); moves stream to REAPER live
 and the latch lines show which speakers each object is feeding. Per object you can set
-**Gain** and an **LFE send** (a low‑passed feed to the sub); globally, **Panner law** sets
+**Gain**, an **LFE send** (a low‑passed feed to the sub), and a movement **Effect** (Orbit /
+Oscillate / Spread / Drift — runs in the plug‑in, so it renders); globally, **Panner law** sets
 **Focus** (how tightly each object localises) and **Spread** (how wide its field is), both
 `0–100 %` and sent to every object's plug‑in. The latch‑line links and thicknesses follow them.
 
