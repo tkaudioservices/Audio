@@ -3,6 +3,10 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.10.1
+- **Effect rate is now an exponential scale** (≈0.02–5 Hz) so the slow end — where movement design actually happens — has fine control, shown as seconds-per-cycle (e.g. "28.8 s") for slow rates and Hz for fast.
+- **The X/Y/Z faders track the live effect motion** while an effect runs (so you can watch the position move), without changing the base position; they restore to the base when the effect is turned off. (A fader you're dragging is left alone.)
+
 ## v0.10.0
 - **Effects engine (per-object motion).** Each object can run a movement effect, computed **inside the plug-in** so it renders to file: **Orbit** (circles a centre), **Oscillate** (sweeps along X/Y/Z), **Spread / size** (widens the object across more speakers), and **Random drift** (organic wander). Set Effect / Rate / Depth / Axis in the object editor. The web view **animates the object live** along its path (Orbit/Oscillate are phase-exact; Drift is an approximation since the plug-in's is random), and draws the effect's extent so you can see what it covers.
 - The latch lines and meters follow the moving object, so what you see tracks what you hear.

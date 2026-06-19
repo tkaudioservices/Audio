@@ -86,7 +86,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.10.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.10.1</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <span class="spacer"></span>
   <span class="lastsent" id="hdrSent" title="last command sent to REAPER">—</span>
@@ -115,7 +115,7 @@
           <div class="row"><label>LFE send</label><input type="range" id="oL" min="0" max="1" step="0.001"><span class="val" id="oLv">0.0</span></div>
           <div class="hint" style="margin-top:8px">Effect — animates this object in the plug‑in, so it renders to file. Orbit / Oscillate / Drift move it; Spread widens it across more speakers.</div>
           <div class="row"><label>Effect</label><select id="oFx"><option value="0">Off</option><option value="1">Orbit</option><option value="2">Oscillate</option><option value="3">Spread / size</option><option value="4">Random drift</option></select></div>
-          <div class="row"><label>Rate · Hz</label><input type="range" id="oFr" min="0" max="5" step="0.05"><span class="val" id="oFrv">0.3</span></div>
+          <div class="row"><label>Rate</label><input type="range" id="oFr" min="0" max="100" step="0.5"><span class="val" id="oFrv">3.3 s</span></div>
           <div class="row"><label>Depth</label><input type="range" id="oFd" min="0" max="1" step="0.01"><span class="val" id="oFdv">0.3</span></div>
           <div class="row"><label>Axis</label><select id="oFa" title="Oscillate axis"><option value="0">X · L/R</option><option value="1">Y · F/R</option><option value="2">Z · Height</option></select></div>
           <div class="mini"><button class="btn" id="oTest">Test · sweep X</button></div>
@@ -266,8 +266,20 @@ function effPos(o){
 }
 let fxAnim=false;
 const anyEffect=()=>state.objects.some(o=>o.effect>0 && o.visible!==false);
-function fxTick(){ if(!fxAnim) return; render(); requestAnimationFrame(fxTick); }
-function updateFxAnim(){ const need=anyEffect(); if(need&&!fxAnim){ fxAnim=true; requestAnimationFrame(fxTick); } else if(!need){ fxAnim=false; } }
+function fxTick(){ if(!fxAnim) return; render(); updateLiveFaders(); requestAnimationFrame(fxTick); }
+function updateFxAnim(){ const need=anyEffect();
+  if(need && !fxAnim){ fxAnim=true; requestAnimationFrame(fxTick); }
+  else if(!need && fxAnim){ fxAnim=false; syncObjEditor(); }   // restore the faders to the base position
+}
+// while an effect animates, the X/Y/Z faders track the live position (skip one the user is dragging)
+function updateLiveFaders(){ const o=cur(); if(!o||!o.effect) return; const p=effPos(o);
+  const set=(id,v)=>{ if(document.activeElement!==$(id)){ $(id).value=v; $(id+'v').textContent=v.toFixed(2); } };
+  set('oX',p.x); set('oY',p.y); set('oZ',p.z);
+}
+// effect rate: an exponential 0.02..5 Hz scale (fine control at the slow end), shown as seconds/cycle
+const pctToRate = p => 0.02*Math.pow(250, p/100);
+const rateToPct = r => Math.round(Math.log(Math.max(0.02,Math.min(5,r))/0.02)/Math.log(250)*100);
+const rateLabel = r => r>=1 ? r.toFixed(2)+' Hz' : (1/r).toFixed(1)+' s';
 
 //============================================================ canvas
 const cTop=$('cTop'), cFront=$('cFront');
@@ -469,7 +481,7 @@ function syncObjEditor(){
   $('oG').value=o.gain; $('oGv').textContent=o.gain.toFixed(2);
   $('oL').value=o.lfe||0; $('oLv').textContent=(o.lfe||0).toFixed(2);
   const rate=o.rate==null?0.3:o.rate, depth=o.depth==null?0.3:o.depth;
-  $('oFx').value=o.effect||0; $('oFr').value=rate; $('oFrv').textContent=rate.toFixed(2);
+  $('oFx').value=o.effect||0; $('oFr').value=rateToPct(rate); $('oFrv').textContent=rateLabel(rate);
   $('oFd').value=depth; $('oFdv').textContent=depth.toFixed(2); $('oFa').value=o.axis||0;
 }
 function syncSpkEditor(){ const s=state.speakers.find(x=>x.id===state.selSpk); const e=$('spkEditor'); if(!e) return;
@@ -527,10 +539,10 @@ function num(el){ const v=parseFloat(el.value); return isNaN(v)?0:v; }
   $(id+'v').textContent=v.toFixed(2); scheduleSend(o,{oX:'x',oY:'y',oZ:'z',oG:'g',oL:'l'}[id]); render(); });
 ['oX','oY','oZ','oG','oL'].forEach(id=>$(id).onchange=()=>{ const o=cur(); if(o)sendObject(o); });
 // effects engine controls
-$('oFx').onchange=e=>{ const o=cur(); if(!o)return; o.effect=parseInt(e.target.value,10); sendFx(o); render(); };
+$('oFx').onchange=e=>{ const o=cur(); if(!o)return; o.effect=parseInt(e.target.value,10); sendFx(o); syncObjEditor(); render(); };
 $('oFa').onchange=e=>{ const o=cur(); if(!o)return; o.axis=parseInt(e.target.value,10); sendFx(o); render(); };
-['oFr','oFd'].forEach(id=>$(id).oninput=e=>{ const o=cur(); if(!o)return; const v=parseFloat(e.target.value);
-  if(id==='oFr')o.rate=v; else o.depth=v; $(id+'v').textContent=v.toFixed(2); sendFx(o); render(); });
+$('oFr').oninput=e=>{ const o=cur(); if(!o)return; o.rate=pctToRate(parseFloat(e.target.value)); $('oFrv').textContent=rateLabel(o.rate); sendFx(o); render(); };
+$('oFd').oninput=e=>{ const o=cur(); if(!o)return; o.depth=parseFloat(e.target.value); $('oFdv').textContent=o.depth.toFixed(2); sendFx(o); render(); };
 function cur(){ return state.objects.find(x=>x.id===state.selObj); }
 
 $('oTest').onclick=testSweep;
