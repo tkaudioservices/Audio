@@ -3,6 +3,16 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.22.0
+- **Follow play.** A *Follow play* toggle (REAPER connection) shows REAPER's **live output position** in the view — so **baked** and **recorded** moves (and live effects) animate as the project plays. Display-only: it never changes an object's base position.
+- **Gain in dB.** Object **Gain** and **LFE send** now read and set in **decibels** (−∞…0 dB) instead of a 0–1 number.
+- **Bake fixes & workflow.** Bake now writes through `ScaleToEnvelopeMode` (correct whether the FX envelope is linear or fader-scaled). **Make a time selection** and Bake drops the motion in between (whole project if none). **Clear bake(s)** clears only the selection (or all) and re-enables the live effect, so you can read a baked move, tweak the effect and write a new one.
+- **Spread / Size now shows in the view.** The Spread effect widens an object's field — the preview's latch lines now spread to match the plug-in (previously only audible).
+- **Radial is a room option.** The Cartesian/Radial top-view switch moved from the top bar into *Room & speakers → Top view*.
+- **Name / rename cues.** Double-click a cue to rename it.
+- **Room presets.** *Save preset* stores the current room + speakers in the browser (your presets), alongside the built-in layouts; Export/Import file still moves them between machines.
+- Removed the *Test · sweep X* button. Added SurroundPanner to the repo's top-level README.
+
 ## v0.21.0
 - **Depth cue (near/far).** A new **Depth** amount in *Panner law*: objects further from the listener (room centre) get gently **duller (air absorption — a distance low‑pass) and quieter**, computed per object in the plug‑in from its live position. 0 = off. Distant objects also fade in the view, so the cue reads visually too. (New FX param tag 16 / JSFX `slider13`.)
 - **Radial view (L‑ISA / KLANG style).** A **Radial** toggle in the top bar switches the top view to a listener‑centred polar plot — distance rings + angle spokes, FRONT up, listener at the centre — alongside the existing Cartesian top and the front (height) view. Objects, speakers, coverage, handles and dragging all work the same in either mode (it's purely how the plane is drawn). The front X/Z view still handles elevation.

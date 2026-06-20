@@ -95,10 +95,9 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.21.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.22.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
-  <button class="btn toggle" id="viewRadial" title="Top view: Cartesian ⟷ Radial (listener‑centred, L‑ISA/KLANG style)">Radial</button>
   <span class="spacer"></span>
   <span class="lastsent" id="hdrSent" title="last command sent to REAPER">—</span>
   <div class="status"><span class="dot" id="connDot"></span><span id="connTxt">bridge offline</span></div>
@@ -122,8 +121,8 @@
           <div class="row"><label>X · L/R</label><input type="range" id="oX" min="-1" max="1" step="0.001"><span class="val" id="oXv">0</span></div>
           <div class="row"><label>Y · F/R</label><input type="range" id="oY" min="-1" max="1" step="0.001"><span class="val" id="oYv">0</span></div>
           <div class="row"><label>Z · Height</label><input type="range" id="oZ" min="0" max="1" step="0.001"><span class="val" id="oZv">0</span></div>
-          <div class="row"><label>Gain</label><input type="range" id="oG" min="0" max="1" step="0.001"><span class="val" id="oGv">1.0</span></div>
-          <div class="row"><label>LFE send</label><input type="range" id="oL" min="0" max="1" step="0.001"><span class="val" id="oLv">0.0</span></div>
+          <div class="row"><label>Gain</label><input type="range" id="oG" min="-60" max="0" step="0.5"><span class="val" id="oGv">0 dB</span></div>
+          <div class="row"><label>LFE send</label><input type="range" id="oL" min="-60" max="0" step="0.5"><span class="val" id="oLv">−∞</span></div>
           <div class="hint help" style="margin-top:8px"><span id="fxScope"></span>Effect — animates this object in the plug‑in, so it renders to file. Orbit / Oscillate / Drift move it; Spread widens it across more speakers. <span class="pill">Ctrl/Shift‑click the list to select several and shape them together.</span></div>
           <div class="row"><label>Effect</label><select id="oFx"><option value="0">Off</option><option value="1">Orbit</option><option value="2">Oscillate</option><option value="3">Spread / size</option><option value="4">Random drift</option></select></div>
           <div class="row"><label>Rate</label><input type="range" id="oFr" min="0" max="100" step="0.5"><span class="val" id="oFrv">3.3 s</span></div>
@@ -131,13 +130,11 @@
           <div class="row"><label>Axis</label><select id="oFa" title="Oscillate axis"><option value="0">X · L/R</option><option value="1">Y · F/R</option><option value="2">Z · Height</option></select></div>
           <div class="row"><label>Phase</label><input type="range" id="oFp" min="0" max="1" step="0.001" title="Offset where this object is in its cycle — stagger several for chasing / flocking motion"><span class="val" id="oFpv">0°</span></div>
           <div class="mini"><button class="btn" id="oStagger" title="Spread the phase evenly across the selected objects, so they move in sequence">Stagger phases</button></div>
-          <div class="mini"><button class="btn" id="oBake" title="Write the effect motion to X/Y/Z automation so a render runs offline at full speed">Bake → envelopes</button><button class="btn" id="oClearBake" title="Remove the baked automation and re-enable the live effect">Clear bake</button></div>
-          <div class="hint help" id="bakeHint">Bakes the selected object(s)' Orbit / Oscillate / Drift motion to X/Y/Z automation over the time selection (whole project if none) and turns the live effect off — so an <b>offline render runs at full speed</b>. Re‑bake overwrites; Clear removes the points and re‑enables the effect. (Spread isn't a position move, so it can't be baked.)</div>
+          <div class="mini"><button class="btn" id="oBake" title="Write the effect motion to X/Y/Z automation over the time selection (whole project if none)">Bake → envelopes</button><button class="btn" id="oClearBake" title="Clear baked automation in the time selection (or all), and re-enable the live effect">Clear bake(s)</button></div>
+          <div class="hint help" id="bakeHint"><b>Make a time selection</b> and Bake drops the motion in between (no selection = whole project). Bakes the selected object(s)' Orbit / Oscillate / Drift to X/Y/Z automation and turns the live effect off, so an <b>offline render runs at full speed</b>. Re‑bake overwrites that range. <b>Clear bake(s)</b> removes the points in the selection (or all) and re‑enables the live effect — so you can read it, tweak the effect, and write a new move. (Spread isn't a position move, so it can't be baked.)</div>
           <div class="pill" id="bakeStatus" style="margin:2px 0 6px"></div>
           <div class="mini"><button class="btn toggle" id="oRec" title="Arm REAPER latch automation on the selected object(s); play and drag to record moves">● Record moves</button></div>
           <div class="hint help">Arms REAPER's <b>latch</b> automation on the selected object(s) (or all). Press <b>play</b> in REAPER and drag objects — the moves record to editable X/Y/Z automation. Turn off to stop (tracks return to read). The capture complement to Bake.</div>
-          <div class="mini"><button class="btn" id="oTest">Test · sweep X</button></div>
-          <div class="hint help">Sweeps this object's X across the room so you can confirm the link — watch it move in REAPER. The track, FX and parameter mapping are filled in automatically by the Live script.</div>
         </div>
       </div>
     </div>
@@ -170,10 +167,14 @@
           </select>
         </div>
         <div class="row"><label>Room · m</label><input type="number" id="rW" step="0.5" min="1" title="Width (X)"><input type="number" id="rD" step="0.5" min="1" title="Depth (Y)"><input type="number" id="rH" step="0.5" min="1" title="Height (Z)"></div>
+        <div class="row"><label>Top view</label><select id="topModeSel" title="Cartesian grid or radial (listener‑centred, L‑ISA/KLANG style)"><option value="cart">Cartesian (X/Y)</option><option value="radial">Radial (listener‑centred)</option></select></div>
         <div class="row"><label>Coverage</label><select id="covView" title="Which speakers' coverage footprints to draw in Edit room"><option value="all">Draw all</option><option value="selected">Selected only</option><option value="off">Hidden</option></select></div>
         <div class="hint help">Speakers feed the panner live — speaker <b>#n drives REAPER output channel n</b>, so order matters. In <b>Edit room</b> drag a speaker to move it, or drag the handles on its coverage to shape it. Set <i>Coverage → Selected only</i> to fine‑tune one at a time.</div>
+        <div class="grphdr" id="presetHdr" style="display:none"><span class="gn">Your presets</span></div>
+        <div class="list" id="presetList"></div>
         <div class="list" id="spkList"></div>
-        <div class="mini"><button class="btn" id="addSpk">+ Add speaker</button><button class="btn" id="expLayout" title="Save this room + speaker layout to a file">Export</button><button class="btn" id="impLayout" title="Load a saved room + speaker layout">Import</button></div>
+        <div class="mini"><button class="btn" id="addSpk">+ Add speaker</button><button class="btn" id="savePreset" title="Save the current room + speakers as a reusable preset (stored in this browser)">Save preset</button></div>
+        <div class="mini"><button class="btn" id="expLayout" title="Save this room + speaker layout to a file">Export file</button><button class="btn" id="impLayout" title="Load a saved room + speaker layout from a file">Import file</button></div>
         <input type="file" id="impFile" accept="application/json,.json" style="display:none">
         <div id="spkEditor" style="display:none">
           <div class="subhdr">Speaker</div>
@@ -228,7 +229,7 @@
         <div class="mini"><button class="btn primary" id="btnConnect">Connect / test</button><button class="btn" id="btnPull">Reload from REAPER</button></div>
         <div class="hint" id="connHint">In REAPER, run <span class="kbd">SurroundPanner_Live.lua</span> and start the bridge. Objects load automatically and moves apply straight to REAPER — no OSC setup, no Import/Export.</div>
         <div class="row"><label>Send rate</label><input type="range" id="bRate" min="10" max="60" step="5"><span class="val" id="bRatev">30</span></div>
-        <div class="row"><label>Follow</label><input type="checkbox" id="bFollow"><span class="hint" style="margin:0">mirror REAPER's own moves back into the UI (polls the live scene)</span></div>
+        <div class="row"><label>Follow play</label><input type="checkbox" id="bFollow"><span class="hint" style="margin:0">show REAPER's live position in the view — effects, <b>baked</b> and <b>recorded</b> moves all animate as it plays (display only; doesn't change the base)</span></div>
       </div>
     </div>
   </div>
@@ -241,6 +242,10 @@ const $ = id => document.getElementById(id);
 const clamp = (v,a=-1,b=1)=>Math.max(a,Math.min(b,v));
 const map = (v,a,b,c,d)=> c + (v-a)*(d-c)/(b-a);
 const uid = ()=> Math.random().toString(36).slice(2,9);
+// gain <-> dB. Object levels run 0..1 linear (−∞..0 dB); the bottom of the slider is silence.
+const dbToLin = db => db<=-60 ? 0 : Math.pow(10, db/20);
+const linToDb = lin => lin<=0 ? -60 : Math.max(-60, 20*Math.log10(lin));
+const fmtDb = lin => lin<=0.0011 ? '−∞' : linToDb(lin).toFixed(1)+' dB';
 const PAD = 36;
 const PALETTE = ['#39c0ed','#7ee787','#f0883e','#f778ba','#d2a8ff','#ffdf5d','#56d4dd','#ff9492'];
 // metres <-> normalized. Room is W x D x H metres; X/Y share one scale (isotropic), Z uses H.
@@ -259,7 +264,7 @@ let state = {
   bridge:{url:"http://localhost:9000", connected:false, rate:30},
   tracks:[],
   selObj:null, selObjs:[], selSpk:null, mode:"objects", fxPaused:false,
-  cues:[], selCue:null, recording:false, covView:"all", topMode:"cart"
+  cues:[], selCue:null, recording:false, covView:"all", topMode:"cart", follow:false, userPresets:[]
 };
 let activeDragId=null;   // object id being dragged — pollState won't overwrite it
 
@@ -330,7 +335,9 @@ function coverageWeight(s, ox, oy){
   return e<=1 ? 1 : Math.max(0.001, Math.exp(-((e-1)**2)*4));
 }
 function computeGains(obj){
-  const eps = state.panner.blur;
+  // Spread/size effect (3) widens the field — add its blur here so the preview shows it (matches the JSFX xblur)
+  const xblur = (obj.effect===3 && !state.fxPaused) ? (obj.depth||0)*0.5 : 0;
+  const eps = state.panner.blur + xblur;
   const raw = state.speakers.map(s=>{
     if(s.lfe) return 0;   // LFE is non-positional — no latch line, matches the JSFX
     const dx=obj.x-s.x, dy=obj.y-s.y, dz=(obj.z-s.z);
@@ -360,8 +367,11 @@ function effPos(o){
   else if(o.effect===4){ x=o.x+d*Math.sin(ph*0.7); y=o.y+d*Math.cos(ph*0.53); }          // drift (approx)
   return {x:clamp(x),y:clamp(y),z:clamp(z,0,1)};                                          // effect 3 (spread) doesn't move
 }
+// the position to draw an object at: REAPER's live value when Follow play is on (and we have it),
+// otherwise the local preview (effect simulation or static base).
+const curPos=o=> (state.follow && o.live) ? o.live : effPos(o);
 let fxAnim=false;
-const anyEffect=()=>!state.fxPaused && state.objects.some(o=>o.effect>0 && o.visible!==false);
+const anyEffect=()=>!state.fxPaused && !state.follow && state.objects.some(o=>o.effect>0 && o.visible!==false);
 function fxTick(){ if(!fxAnim) return; render(); updateLiveFaders(); requestAnimationFrame(fxTick); }
 function updateFxAnim(){ const need=anyEffect();
   if(need && !fxAnim){ fxAnim=true; requestAnimationFrame(fxTick); }
@@ -500,7 +510,7 @@ function render(){
   drawCoverage(ctxT,T.w,T.h);   // speaker footprints, behind the latch lines
   // latch lines (from the effective, effect-modulated position)
   state.objects.forEach(o=>{ if(o.visible===false) return;
-    const p=effPos(o), g=computeGains(o.effect?Object.assign({},o,p):o); const [ox,oy]=topXY(p.x,p.y,T.w,T.h);
+    const p=curPos(o), g=computeGains(Object.assign({},o,p)); const [ox,oy]=topXY(p.x,p.y,T.w,T.h);
     state.speakers.forEach((s,i)=>{ if(g[i]<state.panner.threshold) return;
       const [sx,sy]=topXY(s.x,s.y,T.w,T.h);
       ctxT.strokeStyle=o.color; ctxT.globalAlpha=Math.min(1,g[i]); ctxT.lineWidth=Math.max(0.5,g[i]*4);
@@ -512,8 +522,8 @@ function render(){
   state.speakers.forEach(s=>{ const [sx,sy]=topXY(s.x,s.y,T.w,T.h); drawSpeaker(ctxT,sx,sy,s.name, s.id===state.selSpk); });
   // objects (drawn at the effective position, with the effect path behind)
   state.objects.forEach(o=>{ if(o.visible===false) return;
-    if(o.effect) drawFxPath(ctxT,o,T.w,T.h);
-    const p=effPos(o); const [ox,oy]=topXY(p.x,p.y,T.w,T.h), sel=state.selObjs.includes(o.id);
+    if(o.effect && !state.follow) drawFxPath(ctxT,o,T.w,T.h);
+    const p=curPos(o); const [ox,oy]=topXY(p.x,p.y,T.w,T.h), sel=state.selObjs.includes(o.id);
     ctxT.globalAlpha=depthAlpha(p);
     ctxT.beginPath(); ctxT.arc(ox,oy,sel?9:7,0,7); ctxT.fillStyle=o.color; ctxT.fill();
     if(sel){ ctxT.strokeStyle=o.id===state.selObj?'#fff':'#39c0ed'; ctxT.lineWidth=2; ctxT.stroke(); }
@@ -525,7 +535,7 @@ function render(){
   // FRONT VIEW (x vs z)
   drawGrid(ctxF,F.w,F.h);
   state.objects.forEach(o=>{ if(o.visible===false) return;
-    const p=effPos(o), g=computeGains(o.effect?Object.assign({},o,p):o); const [ox,oz]=frontXZ(p.x,p.z,F.w,F.h);
+    const p=curPos(o), g=computeGains(Object.assign({},o,p)); const [ox,oz]=frontXZ(p.x,p.z,F.w,F.h);
     state.speakers.forEach((s,i)=>{ if(g[i]<state.panner.threshold) return;
       const [sx,sz]=frontXZ(s.x,s.z,F.w,F.h);
       ctxF.strokeStyle=o.color; ctxF.globalAlpha=Math.min(1,g[i]); ctxF.lineWidth=Math.max(0.5,g[i]*3);
@@ -533,7 +543,7 @@ function render(){
     }); ctxF.globalAlpha=1;
   });
   state.speakers.forEach(s=>{ const [sx,sz]=frontXZ(s.x,s.z,F.w,F.h); drawSpeaker(ctxF,sx,sz,s.name, s.id===state.selSpk); });
-  state.objects.forEach(o=>{ if(o.visible===false) return; const p=effPos(o); const [ox,oz]=frontXZ(p.x,p.z,F.w,F.h), sel=state.selObjs.includes(o.id);
+  state.objects.forEach(o=>{ if(o.visible===false) return; const p=curPos(o); const [ox,oz]=frontXZ(p.x,p.z,F.w,F.h), sel=state.selObjs.includes(o.id);
     ctxF.globalAlpha=depthAlpha(p);
     ctxF.beginPath(); ctxF.arc(ox,oz,sel?8:6,0,7); ctxF.fillStyle=o.color; ctxF.fill();
     if(sel){ ctxF.strokeStyle=o.id===state.selObj?'#fff':'#39c0ed'; ctxF.lineWidth=2; ctxF.stroke(); }
@@ -622,24 +632,21 @@ async function sendFx(o){ if(!o.osc) return; const m=o.osc;
 }
 async function sendRaw(addr,value){ const ok=await postOSC([{addr,value}]); showSent(addr,value,ok); }
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-async function testSweep(){ const o=cur(); if(!o){ alert('Select an object first.'); return; }
-  const addr=`/track/${o.osc.track}/fx/${o.osc.fx}/fxparam/${o.osc.px}/value`;
-  for(const v of [0,0.25,0.5,0.75,1,0.5]){ await sendRaw(addr,v); await sleep(140); } }
-
-//============================================================ follow REAPER (read-back)
+//============================================================ follow play (display REAPER's live position)
 let followTimer=null;
-function setFollow(on){ if(on && !followTimer){ followTimer=setInterval(pollState,200); } else if(!on && followTimer){ clearInterval(followTimer); followTimer=null; } }
-async function pollState(){ if(!state.bridge.connected) return;   // 'Follow' — mirror REAPER moves from the live session
+function setFollow(on){ state.follow=on;
+  if(on && !followTimer){ followTimer=setInterval(pollState,120); }
+  else if(!on && followTimer){ clearInterval(followTimer); followTimer=null; state.objects.forEach(o=>o.live=null); render(); } }
+// 'Follow play' reads the live X/Y/Z REAPER is outputting (effect / baked / recorded automation) and
+// shows the object there — display only, into o.live, so the base position is never touched.
+async function pollState(){ if(!state.bridge.connected) return;
   let d; try{ const r=await fetch(state.bridge.url+'/session'); if(!r.ok)return; d=await r.json(); }catch(e){ return; }
   if(!d.objects) return;
   const byTrack={}; d.objects.forEach(s=>{ if(s.osc) byTrack[s.osc.track]=s; });
-  let changed=false;
-  state.objects.forEach(o=>{ if(o.id===activeDragId) return; if(o.effect>0) return;   // skip fx objects: their sliders carry the live motion, not the base
-    const s=byTrack[o.osc.track]; if(!s) return;
-    if(typeof s.x==='number' && Math.abs(s.x-o.x)>1e-4){ o.x=s.x; changed=true; }
-    if(typeof s.y==='number' && Math.abs(s.y-o.y)>1e-4){ o.y=s.y; changed=true; }
-    if(typeof s.z==='number' && Math.abs(s.z-o.z)>1e-4){ o.z=s.z; changed=true; } });
-  if(changed){ render(); if(cur())syncObjEditor(); }
+  state.objects.forEach(o=>{ if(o.id===activeDragId){ o.live=null; return; }
+    const s=o.osc && byTrack[o.osc.track]; if(!s || typeof s.x!=='number') return;
+    o.live={x:s.x, y:(typeof s.y==='number'?s.y:o.y), z:(typeof s.z==='number'?s.z:o.z)}; });
+  render();
 }
 
 //============================================================ object / speaker CRUD
@@ -672,8 +679,8 @@ function syncObjEditor(){
   $('oX').value=o.x; $('oXv').textContent=xyToM(o.x);
   $('oY').value=o.y; $('oYv').textContent=xyToM(o.y);
   $('oZ').value=o.z; $('oZv').textContent=zToM(o.z);
-  $('oG').value=o.gain; $('oGv').textContent=o.gain.toFixed(2);
-  $('oL').value=o.lfe||0; $('oLv').textContent=(o.lfe||0).toFixed(2);
+  $('oG').value=linToDb(o.gain); $('oGv').textContent=fmtDb(o.gain);
+  $('oL').value=linToDb(o.lfe||0); $('oLv').textContent=fmtDb(o.lfe||0);
   const rate=o.rate==null?0.3:o.rate, depth=o.depth==null?0.3:o.depth;
   $('oFx').value=o.effect||0; $('oFr').value=rateToPct(rate); $('oFrv').textContent=rateLabel(rate);
   $('oFd').value=depth; $('oFdv').textContent=xyToM(depth); $('oFa').value=o.axis||0;
@@ -751,8 +758,8 @@ $('oName').oninput=e=>{ const o=cur(); if(!o)return; o.name=e.target.value; rend
 $('oName').onchange=e=>{ const o=cur(); if(!o||!o.osc)return; postRename(o.osc.track, o.name);
   const h=$('hdrSent'); if(h) h.textContent='renamed track '+o.osc.track+' → "'+o.name+'"'; };
 ['oX','oY','oZ','oG','oL'].forEach(id=>$(id).oninput=e=>{ const o=cur(); if(!o)return; const v=parseFloat(e.target.value);
-  if(id==='oX')o.x=v; if(id==='oY')o.y=v; if(id==='oZ')o.z=v; if(id==='oG')o.gain=v; if(id==='oL')o.lfe=v;
-  $(id+'v').textContent = id==='oX'||id==='oY'?xyToM(v) : id==='oZ'?zToM(v) : v.toFixed(2);
+  if(id==='oX')o.x=v; if(id==='oY')o.y=v; if(id==='oZ')o.z=v; if(id==='oG')o.gain=dbToLin(v); if(id==='oL')o.lfe=dbToLin(v);
+  $(id+'v').textContent = id==='oX'||id==='oY'?xyToM(v) : id==='oZ'?zToM(v) : id==='oG'?fmtDb(o.gain) : fmtDb(o.lfe);
   scheduleSend(o,{oX:'x',oY:'y',oZ:'z',oG:'g',oL:'l'}[id]); render(); });
 ['oX','oY','oZ','oG','oL'].forEach(id=>$(id).onchange=()=>{ const o=cur(); if(o)sendObject(o); });
 // effects engine controls — applied to every selected object (multi-select), so you can shape a
@@ -772,7 +779,6 @@ $('oStagger').onclick=()=>{ const list=curSet(); if(list.length<2){ alert('Selec
   const h=$('hdrSent'); if(h) h.textContent='staggered phase across '+list.length+' objects'; };
 function cur(){ return state.objects.find(x=>x.id===state.selObj); }
 
-$('oTest').onclick=testSweep;
 
 // Bake FX -> envelopes. Operates on the current selection (multi-select), tells the Live script to
 // write each object's effect motion to X/Y/Z automation and turn the live effect off, so an offline
@@ -852,6 +858,28 @@ function importLayout(e){ const f=e.target.files&&e.target.files[0]; if(!f){ ret
 $('expLayout').onclick=exportLayout;
 $('impLayout').onclick=()=>$('impFile').click();
 $('impFile').onchange=importLayout;
+
+// Room presets — built-in ones live in the Preset dropdown; user ones are saved in this browser.
+const RP_KEY='tkSurroundPanner.roompresets';
+function loadRoomPresets(){ try{ const s=localStorage.getItem(RP_KEY); const a=s?JSON.parse(s):[]; state.userPresets=Array.isArray(a)?a:[]; }catch(e){ state.userPresets=[]; } }
+function persistRoomPresets(){ try{ localStorage.setItem(RP_KEY, JSON.stringify(state.userPresets)); }catch(e){} }
+function speakerData(){ return state.speakers.map(s=>({name:s.name, type:s.type||0, x:s.x, y:s.y, z:s.z, lfe:s.lfe?1:0, cw:s.cw||0, cd:s.cd||0, ca:s.ca||0, cbw:s.cbw||90})); }
+function applySpeakerData(arr){ state.speakers=arr.map((s,i)=>({id:uid(), name:s.name||('Spk'+(i+1)), type:s.type||0,
+  x:+s.x||0, y:+s.y||0, z:+s.z||0, lfe:s.lfe?1:0, cw:+s.cw||0, cd:+s.cd||0, ca:+s.ca||0, cbw:+s.cbw||90, ch:i+1})); }
+function savePreset(){ const name=(prompt('Save room preset as:', state.project||'My room')||'').trim(); if(!name) return;
+  const data={ room:{...state.room}, speakers:speakerData() };
+  const ex=state.userPresets.find(p=>p.name===name); if(ex){ ex.data=data; } else { state.userPresets.push({id:uid(), name, data}); }
+  persistRoomPresets(); renderRoomPresets(); const h=$('hdrSent'); if(h) h.textContent='saved room preset "'+name+'"'; }
+function loadUserPreset(p){ state.room={w:+p.data.room.w||10, d:+p.data.room.d||10, h:+p.data.room.h||4}; applySpeakerData(p.data.speakers||[]);
+  state.selSpk=null; renderAll(); pushRoom(); const h=$('hdrSent'); if(h) h.textContent='loaded room preset "'+p.name+'"'; }
+function delUserPreset(id){ state.userPresets=state.userPresets.filter(p=>p.id!==id); persistRoomPresets(); renderRoomPresets(); }
+function renderRoomPresets(){ const el=$('presetList'), hd=$('presetHdr'); if(!el) return; el.innerHTML='';
+  if(hd) hd.style.display = state.userPresets.length?'flex':'none';
+  state.userPresets.forEach(p=>{ const d=document.createElement('div'); d.className='item';
+    d.innerHTML=`<span class="nm" title="load this preset">${p.name}</span><span class="meta">${(p.data.speakers||[]).length} spk</span><span class="x" title="delete">✕</span>`;
+    d.onclick=e=>{ if(e.target.classList.contains('x')) delUserPreset(p.id); else loadUserPreset(p); };
+    el.appendChild(d); }); }
+$('savePreset').onclick=savePreset;
 // room size (metres) — display scale only; re-renders all the metre readouts
 ['rW','rD','rH'].forEach((id,k)=>$(id).oninput=e=>{ state.room[['w','d','h'][k]]=parseFloat(e.target.value)||1; renderAll(); });
 function syncRoomInputs(){ if(!$('rW'))return; $('rW').value=state.room.w; $('rD').value=state.room.d; $('rH').value=state.room.h; }
@@ -876,8 +904,7 @@ function pushRoom(){ clearTimeout(roomTimer); roomTimer=setTimeout(()=>{
 },150); }
 function setMode(m){ state.mode=m; const b=$('modeRoom'); if(b) b.classList.toggle('on', m==='room'); render(); }
 $('modeRoom').onclick=()=>setMode(state.mode==='room'?'objects':'room');
-$('viewRadial').onclick=()=>{ state.topMode = state.topMode==='radial'?'cart':'radial';
-  $('viewRadial').classList.toggle('on', state.topMode==='radial');
+$('topModeSel').onchange=e=>{ state.topMode=e.target.value;
   $('topLabel').textContent = state.topMode==='radial' ? 'TOP · RADIAL — listener centred · FRONT up' : 'TOP — X (L/R) · Y (FRONT/REAR)';
   render(); };
 
@@ -1063,11 +1090,12 @@ function recallCue(cue, morphSec){
 function renderCues(){ const cl=$('cueList'); if(!cl) return; cl.innerHTML='';
   if(!state.cues.length){ cl.innerHTML='<div class="hint" style="margin:0">No cues yet — Capture the current scene.</div>'; return; }
   state.cues.forEach(c=>{ const d=document.createElement('div'); d.className='item'+(c.id===state.selCue?' sel':'');
-    d.innerHTML=`<span class="nm">${c.name}</span><span class="meta">${Object.keys(c.data).length} obj</span><span class="ms upd" title="update this cue to the current scene">U</span><span class="x" title="delete">✕</span>`;
+    d.innerHTML=`<span class="nm" title="click to recall · double‑click to rename">${c.name}</span><span class="meta">${Object.keys(c.data).length} obj</span><span class="ms upd" title="update this cue to the current scene">U</span><span class="x" title="delete">✕</span>`;
     d.onclick=e=>{ const cls=e.target.classList;
       if(cls.contains('x')){ delCue(c.id); }
       else if(cls.contains('upd')){ updateCue(c.id); }
       else { state.selCue=c.id; renderCues(); recallCue(c, ($('cueMorph')?parseFloat($('cueMorph').value):0)||0); } };
+    d.querySelector('.nm').ondblclick=e=>{ e.stopPropagation(); const nm=prompt('Rename cue:', c.name); if(nm!=null && nm.trim()){ c.name=nm.trim(); persistCues(); renderCues(); } };
     cl.appendChild(d); });
 }
 function exportCues(){ const blob=new Blob([JSON.stringify({format:'tkSurroundPanner.cues',version:1,cues:state.cues},null,2)],{type:'application/json'});
@@ -1093,6 +1121,7 @@ $('pDepth').value=Math.round((state.panner.depth||0)*100); $('pDepthv').textCont
 $('bRate').value=30;
 loadPreset('7.1.4');
 loadCues(); renderCues();
+loadRoomPresets(); renderRoomPresets();
 render();
 autoStart();   // auto-connect to the bridge and load the live session + objects, if running
 </script>
