@@ -123,6 +123,17 @@ object live along its path and draws the effect's extent, and the latch lines + 
 — so what you see tracks what you hear. (Orbit/Oscillate are phase‑exact in the preview; Drift is
 an approximation, since the plug‑in's drift is randomised.)
 
+**Select several objects** (Ctrl/⌘‑click and Shift‑click in the Objects list) and the effect
+controls apply to the whole selection, so you can shape a group together. **Pause FX** (top bar)
+freezes every effect at its base position — in the preview *and* the plug‑in — and resumes exactly.
+
+**Bake → envelopes.** Bake writes the selected object(s)' Orbit/Oscillate/Drift motion to X/Y/Z
+**FX‑parameter automation** over the time selection (whole project if none) and turns the live
+effect off, so an **offline render runs at full speed** instead of realtime. The baked envelopes
+are normal REAPER automation — read and edit them on the track, re‑bake to overwrite, or **Clear
+bake** to remove the points and re‑enable the live effect. (Spread isn't a position move, so it
+can't be baked.)
+
 ## Rooms & speaker layouts
 
 The room takes **fully custom speaker placement**. Pick a preset as a starting point —
@@ -133,15 +144,21 @@ remove speakers freely; any count and shape works.
 
 Set the **room size** (W × D × H) in metres; positions, coverage and effect sizes all read in
 real‑world metres (the engine stays normalised under the hood). Each speaker has a **mount type**:
-**ceiling** (down‑facing footprint), **wall** (a coverage lobe thrown forward along its angle —
-for speakers that fire across the room), or **sub**.
+**ceiling** (down‑facing ellipse footprint), **wall** (a directional wedge/cone fired across the
+room — see below), or **sub**.
 
-**Coverage shapes.** Each speaker can be given an elliptical **footprint** (Cover W / Cover D /
-Angle) marking the area it actually feeds — e.g. a ceiling speaker's downward spot, or a wide
-front fill. The panner weights each speaker's DBAP gain by how far the object sits inside that
-speaker's ellipse, so objects only get signal from speakers that cover them — sharper, more
-realistic panning. Coverage is **off by default** (0 = covers everywhere). The ellipses draw on
-the top view and the latch lines follow the weighting, in the browser and the plug‑in alike.
+**Coverage shapes.** Each speaker can be given a footprint marking the area it actually feeds, and
+the panner weights each speaker's DBAP gain by how far the object sits inside it — so objects only
+get signal from speakers that cover them (sharper, more realistic panning). **Ceiling/sub** use an
+**ellipse** (Cover W / Cover D / Angle). **Wall** speakers use a **wedge/cone**: *Throw* (how far
+the audio reaches, in metres), *Beam°* (cone width, default 90°) and *Aim°* (direction) — a
+triangle thrown out from the point, for speakers that fire across the room. Coverage is **off by
+default** (0 throw / 0 size = covers everywhere). Footprints draw on the top view in *Edit room*
+mode (hidden while you pan objects); the selected speaker is highlighted, and the latch lines
+follow the weighting in the browser and the plug‑in alike.
+
+**Save / reuse layouts.** *Room & speakers* → **Export** writes the whole room + speaker layout to
+a JSON file; **Import** loads one back, so a venue rig can be reused across shows.
 
 Coordinates are normalised: `X` −1…+1 (left→right), `Y` −1…+1 (rear→front), `Z` 0…1
 (floor→ceiling). Presets follow REAPER's channel order, including the LFE gap.
@@ -205,9 +222,10 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 | File | Direction | Contents |
 |---|---|---|
 | `cmds.json` | UI → REAPER | `{"seq":N,"params":[{"t","f","p","v"}, …]}` — latest value per (track, fx, param). |
-| `room.json` | UI → REAPER | `{"speakers":[{"x","y","z","lfe","cw","cd","ca","ty"}, …]}` — layout + coverage ellipse (`cw`/`cd` half‑axes, `ca` angle°; 0 = off) + mount type `ty` (0 ceiling, 1 wall, 2 sub). |
+| `room.json` | UI → REAPER | `{"speakers":[{"x","y","z","lfe","cw","cd","ca","bw","ty"}, …]}` — layout + coverage. Ceiling/sub: ellipse `cw`/`cd` half‑axes, `ca` angle°. Wall: wedge `cw` = throw, `bw` = beam width°, `ca` = aim°. `ty` = mount type (0 ceiling, 1 wall, 2 sub); 0 = off. |
 | `session.json` | REAPER → UI | Objects (name, colour, group, x/y/z, param tags) + track list. |
 | `levels.json` | REAPER → UI | `{"levels":[…]}` — per‑speaker peak, ~12×/sec. |
+| `bake.json` | UI → REAPER | `{"seq":N,"action":"bake"|"clear","tracks":[…]}` — bake the effect motion to X/Y/Z FX‑parameter envelopes over the time selection (or clear them). |
 
 **Param tags** (the `p` in `cmds.json`) → JSFX slider:
 
@@ -227,17 +245,17 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 
 **Shared memory** (`gmem` namespace `tkSurroundPanner`):
 
-- `gmem[0]` = speaker count; then per speaker `i` an 8‑wide block at `gmem[1 + i*8 ..]`:
-  `x`, `y`, `z`, `lfe`, `cw`, `cd`, `ca` (coverage half‑axes + angle°), `type` (0 ceiling, 1 wall,
-  2 sub). The count is written last, so the JSFX never reads a partial layout (it falls back to a
-  built‑in 7.1.4 if none is set).
+- `gmem[0]` = speaker count; then per speaker `i` a 9‑wide block at `gmem[1 + i*9 ..]`:
+  `x`, `y`, `z`, `lfe`, `cw`, `cd`, `ca` (coverage size/throw + angle°), `type` (0 ceiling, 1 wall,
+  2 sub), `beamwidth` (wall wedge°). The count is written last, so the JSFX never reads a partial
+  layout (it falls back to a built‑in 7.1.4 if none is set).
 - `gmem[1000 + ch]` = per‑output peak. Each JSFX instance (panner **and** `tk SurroundNoise`)
   maxes its level in; the Live script reads and clears these for the meters. (The meter base sits
-  at 1000 to stay clear of the layout block, which can reach ~112 at 16 speakers.)
+  at 1000 to stay clear of the layout block, which can reach ~145 at 16 speakers.)
 
 **Bridge** — `python3 bridge/reaper_bridge.py [--port 9000] [--host 127.0.0.1] [--ipc-dir DIR]`.
 Endpoints: `GET /ping`, `/session`, `/levels`, static files; `POST /set` (object moves),
-`/room` (layout).
+`/room` (layout), `/bake` (bake/clear effect → envelopes).
 
 ---
 
@@ -255,11 +273,16 @@ Endpoints: `GET /ping`, `/session`, `/levels`, static files; `POST /set` (object
       `tk SurroundNoise` on the bus) and ✅ per‑speaker elliptical coverage footprints weighting
       the pan. (Future: union coverage across a group; couple it to object spread.)
 - [x] **Per‑object effect engine** — Orbit / Oscillate / Spread / Random‑drift motion, computed
-      in the plug‑in so it renders; live‑animated in the view. (Future: multi‑channel source
-      spread with centre‑of‑gravity, à la L‑ISA.)
+      in the plug‑in so it renders; live‑animated in the view, **multi‑select** to shape a group,
+      and a master **Pause FX**. (Future: multi‑channel source spread with centre‑of‑gravity, à la
+      L‑ISA.)
+- [x] **Directional speakers** — ceiling ellipse footprints **and** wall wedge/cone coverage
+      (throw + beam width), weighting the pan in the view and the plug‑in.
+- [x] **Save / reuse layouts** — export/import the room + speaker rig as a JSON file.
+- [x] Position **automation (bake)** — bake an object's effect motion to X/Y/Z FX‑parameter
+      envelopes so an offline render runs at full speed; read/edit/overwrite or clear them.
 - [ ] **Binaural mixdown** — a headphone render path for offline work: an HRTF convolver
       in the JSFX for monitoring, and an offline renderer for deliverables.
-- [ ] Position **automation** — record/playback object trajectories to REAPER envelopes.
 - [ ] **Radial / spherical** room view (L‑ISA / KLANG style) alongside the X‑Y / X‑Z views.
 
 ---

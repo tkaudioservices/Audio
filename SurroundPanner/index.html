@@ -86,8 +86,9 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.11.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.13.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
+  <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
   <span class="lastsent" id="hdrSent" title="last command sent to REAPER">—</span>
   <div class="status"><span class="dot" id="connDot"></span><span id="connTxt">bridge offline</span></div>
@@ -113,11 +114,14 @@
           <div class="row"><label>Z · Height</label><input type="range" id="oZ" min="0" max="1" step="0.001"><span class="val" id="oZv">0</span></div>
           <div class="row"><label>Gain</label><input type="range" id="oG" min="0" max="1" step="0.001"><span class="val" id="oGv">1.0</span></div>
           <div class="row"><label>LFE send</label><input type="range" id="oL" min="0" max="1" step="0.001"><span class="val" id="oLv">0.0</span></div>
-          <div class="hint" style="margin-top:8px">Effect — animates this object in the plug‑in, so it renders to file. Orbit / Oscillate / Drift move it; Spread widens it across more speakers.</div>
+          <div class="hint" style="margin-top:8px"><span id="fxScope"></span>Effect — animates this object in the plug‑in, so it renders to file. Orbit / Oscillate / Drift move it; Spread widens it across more speakers. <span class="pill">Ctrl/Shift‑click the list to select several and shape them together.</span></div>
           <div class="row"><label>Effect</label><select id="oFx"><option value="0">Off</option><option value="1">Orbit</option><option value="2">Oscillate</option><option value="3">Spread / size</option><option value="4">Random drift</option></select></div>
           <div class="row"><label>Rate</label><input type="range" id="oFr" min="0" max="100" step="0.5"><span class="val" id="oFrv">3.3 s</span></div>
           <div class="row"><label>Depth</label><input type="range" id="oFd" min="0" max="1" step="0.01"><span class="val" id="oFdv">0.3</span></div>
           <div class="row"><label>Axis</label><select id="oFa" title="Oscillate axis"><option value="0">X · L/R</option><option value="1">Y · F/R</option><option value="2">Z · Height</option></select></div>
+          <div class="mini"><button class="btn" id="oBake" title="Write the effect motion to X/Y/Z automation so a render runs offline at full speed">Bake → envelopes</button><button class="btn" id="oClearBake" title="Remove the baked automation and re-enable the live effect">Clear bake</button></div>
+          <div class="hint" id="bakeHint">Bakes the selected object(s)' Orbit / Oscillate / Drift motion to X/Y/Z automation over the time selection (whole project if none) and turns the live effect off — so an <b>offline render runs at full speed</b>. Re‑bake overwrites; Clear removes the points and re‑enables the effect. (Spread isn't a position move, so it can't be baked.)</div>
+          <div class="pill" id="bakeStatus" style="margin:2px 0 6px"></div>
           <div class="mini"><button class="btn" id="oTest">Test · sweep X</button></div>
           <div class="hint">Sweeps this object's X across the room so you can confirm the link — watch it move in REAPER. The track, FX and parameter mapping are filled in automatically by the Live script.</div>
         </div>
@@ -141,7 +145,8 @@
         <div class="row"><label>Room · m</label><input type="number" id="rW" step="0.5" min="1" title="Width (X)"><input type="number" id="rD" step="0.5" min="1" title="Depth (Y)"><input type="number" id="rH" step="0.5" min="1" title="Height (Z)"></div>
         <div class="hint">Speakers feed the panner live. Speaker <b>#n drives REAPER output channel n</b> — order matters. X/Y −1…1, Z 0…1; tick LFE for a non‑positional channel.</div>
         <div class="list" id="spkList"></div>
-        <div class="mini"><button class="btn" id="addSpk">+ Add speaker</button></div>
+        <div class="mini"><button class="btn" id="addSpk">+ Add speaker</button><button class="btn" id="expLayout" title="Save this room + speaker layout to a file">Export</button><button class="btn" id="impLayout" title="Load a saved room + speaker layout">Import</button></div>
+        <input type="file" id="impFile" accept="application/json,.json" style="display:none">
         <div id="spkEditor" style="display:none">
           <div class="row"><label>Name</label><input type="text" id="sName"></div>
           <div class="row"><label>Type</label><select id="sType"><option value="0">Ceiling (footprint)</option><option value="1">Wall (directional)</option><option value="2">Sub</option></select></div>
@@ -151,11 +156,16 @@
             <div class="row"><label>Z · m</label><input type="number" id="sZ" step="0.1"></div>
             <div class="row"><label>LFE</label><input type="checkbox" id="sLfe"></div>
           </div>
-          <div class="hint" style="margin-top:8px">Coverage (metres) — the area this speaker/zone feeds (0 = off). <b>Ceiling</b>: footprint under it. <b>Wall</b>: lobe thrown forward along <i>Angle</i>. Objects outside it get little feed, so the pan follows the real rig. W/D are half-sizes.</div>
-          <div class="grid2">
+          <div class="hint" style="margin-top:8px" id="covHint">Coverage (metres) — the area this speaker/zone feeds (0 = off). <b>Ceiling/Sub</b>: ellipse footprint, W/D half-sizes. <b>Wall</b>: a wedge thrown forward — <i>Throw</i> = how far it reaches along <i>Angle</i>, <i>Beam</i> = cone width. Objects outside it get little feed, so the pan follows the real rig.</div>
+          <div class="grid2" id="covEllipse">
             <div class="row"><label>Cover W</label><input type="number" id="sCW" min="0" step="0.1"></div>
             <div class="row"><label>Cover D</label><input type="number" id="sCD" min="0" step="0.1"></div>
             <div class="row"><label>Angle°</label><input type="number" id="sCA" min="0" max="360" step="5"></div>
+          </div>
+          <div class="grid2" id="covWedge" style="display:none">
+            <div class="row"><label>Throw</label><input type="number" id="sWThrow" min="0" step="0.1"></div>
+            <div class="row"><label>Beam°</label><input type="number" id="sWBeam" min="5" max="350" step="5"></div>
+            <div class="row"><label>Aim°</label><input type="number" id="sWAim" min="-180" max="360" step="5"></div>
           </div>
         </div>
       </div>
@@ -218,7 +228,7 @@ let state = {
   panner:{rolloff:2.0, blur:0.10, threshold:0.02},   // threshold: fixed faint-line hide (no UI control)
   bridge:{url:"http://localhost:9000", connected:false, rate:30},
   tracks:[],
-  selObj:null, selSpk:null, mode:"objects"
+  selObj:null, selObjs:[], selSpk:null, mode:"objects", fxPaused:false
 };
 let activeDragId=null;   // object id being dragged — pollState won't overwrite it
 
@@ -232,39 +242,48 @@ const PRESETS = {
 };
 function loadPreset(name){
   const p = PRESETS[name]; if(!p) return;
-  state.speakers = p.map((s,i)=>({id:uid(), name:s[0], x:s[1], y:s[2], z:s[3], lfe:s[4]||0, ch:i+1, cw:0, cd:0, ca:0, type:0}));
+  state.speakers = p.map((s,i)=>({id:uid(), name:s[0], x:s[1], y:s[2], z:s[3], lfe:s[4]||0, ch:i+1, cw:0, cd:0, ca:0, cbw:90, type:0}));
   state.selSpk = null;
   renderAll(); pushRoom();
 }
 
-// Time Machine (AIDAnova) — 16 playback channels mapped to zones. [name, type, x, y, z, cw, cd, ca, lfe]
-// type: ceiling=footprint under it, wall=lobe thrown forward, sub=low. Normalized for a 42 x 26 x 6 m room.
+// Time Machine (AIDAnova) — 16 playback channels mapped to zones. [name, type, x, y, z, cw, cd, ca, bw, lfe]
+// type: ceiling=ellipse footprint, wall=wedge thrown forward (cw=throw, bw=beam°), sub=low. 42 x 26 x 6 m room.
 const TIME_MACHINE = { room:{w:42,d:26,h:6}, ch:[
-  ['Ch1 FX1','wall',0.119,-0.583,0.5,0.333,0.143,102,0], ['Ch2 FX2','wall',-0.129,-0.577,0.5,0.333,0.143,77,0],
-  ['Ch3 FX3','wall',-0.779,-0.519,0.5,0.333,0.143,34,0], ['Ch4 FX4','wall',-0.922,-0.165,0.5,0.333,0.143,10,0],
-  ['Ch5 FX5','wall',-0.764,0.272,0.5,0.333,0.143,-20,0], ['Ch6 FX6','wall',-0.231,0.543,0.5,0.333,0.143,-67,0],
-  ['Ch7 FX7','wall',0.254,0.537,0.5,0.333,0.143,-115,0], ['Ch8 FX8','wall',0.745,0.409,0.5,0.333,0.143,-151,0],
-  ['Ch9 FX9','wall',0.765,-0.354,0.5,0.333,0.143,155,0], ['Ch10 L/N/O','ceiling',0.495,-0.281,1.0,0.394,0.601,0,0],
-  ['Ch11 A/B/C','ceiling',-0.162,-0.402,1.0,0.744,0.348,0,0], ['Ch12 E/F/H','ceiling',-0.275,0.005,1.0,0.79,0.659,0,0],
-  ['Ch13 I/J/K','ceiling',0.311,0.148,1.0,0.518,0.723,0,0], ['Ch14 Stage','ceiling',0.0,0.0,0.0,0.143,0.143,0,0],
-  ['Ch15 Subs','sub',0.0,0.0,1.0,0.381,0.381,0,1], ['Ch16 Transition','wall',0.0,0.524,0.5,0.286,0.19,-90,0],
+  ['Ch1 FX1','wall',0.119,-0.583,0.5,0.95,0,102,80,0], ['Ch2 FX2','wall',-0.129,-0.577,0.5,0.95,0,77,80,0],
+  ['Ch3 FX3','wall',-0.779,-0.519,0.5,0.95,0,34,80,0], ['Ch4 FX4','wall',-0.922,-0.165,0.5,0.95,0,10,80,0],
+  ['Ch5 FX5','wall',-0.764,0.272,0.5,0.95,0,-20,80,0], ['Ch6 FX6','wall',-0.231,0.543,0.5,0.95,0,-67,80,0],
+  ['Ch7 FX7','wall',0.254,0.537,0.5,0.95,0,-115,80,0], ['Ch8 FX8','wall',0.745,0.409,0.5,0.95,0,-151,80,0],
+  ['Ch9 FX9','wall',0.765,-0.354,0.5,0.95,0,155,80,0], ['Ch10 L/N/O','ceiling',0.495,-0.281,1.0,0.394,0.601,0,90,0],
+  ['Ch11 A/B/C','ceiling',-0.162,-0.402,1.0,0.744,0.348,0,90,0], ['Ch12 E/F/H','ceiling',-0.275,0.005,1.0,0.79,0.659,0,90,0],
+  ['Ch13 I/J/K','ceiling',0.311,0.148,1.0,0.518,0.723,0,90,0], ['Ch14 Stage','ceiling',0.0,0.0,0.0,0.143,0.143,0,90,0],
+  ['Ch15 Subs','sub',0.0,0.0,1.0,0.381,0.381,0,90,1], ['Ch16 Transition','wall',0.0,0.524,0.5,0.7,0,-90,120,0],
 ]};
 function loadTimeMachine(){
   state.room = {...TIME_MACHINE.room};
   const TY = {ceiling:0, wall:1, sub:2};
-  state.speakers = TIME_MACHINE.ch.map((r,i)=>({id:uid(), name:r[0], type:TY[r[1]]||0, x:r[2], y:r[3], z:r[4], cw:r[5], cd:r[6], ca:r[7], lfe:r[8]||0, ch:i+1}));
+  state.speakers = TIME_MACHINE.ch.map((r,i)=>({id:uid(), name:r[0], type:TY[r[1]]||0, x:r[2], y:r[3], z:r[4], cw:r[5], cd:r[6], ca:r[7], cbw:r[8], lfe:r[9]||0, ch:i+1}));
   state.selSpk = null;
   renderAll(); pushRoom();
 }
 
 //============================================================ DBAP panning
-// Coverage weight: how well object (ox,oy) sits inside speaker s's elliptical footprint
-// (top-down X/Y). cw/cd are half-axes, ca the angle in degrees. 0 => off (weight 1). Mirrors the JSFX.
+// Coverage weight: how well object (ox,oy) sits inside speaker s's footprint (top-down X/Y).
+// Ceiling/sub: ellipse, cw/cd half-axes, ca rotation°. Wall: a wedge/cone thrown forward along
+// ca — cw is the throw distance, cbw the beam width in degrees. 0 => off (weight 1). Mirrors the JSFX.
+function wrapPi(a){ return Math.atan2(Math.sin(a), Math.cos(a)); }
 function coverageWeight(s, ox, oy){
-  const cw=s.cw||0, cd=s.cd||0; if(!(cw>0 && cd>0)) return 1;
+  if((s.type||0)===1){                                            // wall: directional wedge
+    const thr=s.cw||0; if(!(thr>0)) return 1;
+    const ca=(s.ca||0)*Math.PI/180, dx=ox-s.x, dy=oy-s.y, r=Math.hypot(dx,dy);
+    const hw=Math.max(1,(s.cbw||90))*0.5*Math.PI/180;            // half beam width (rad)
+    const da=wrapPi(Math.atan2(dy,dx)-ca);
+    const e=Math.max(Math.abs(da)/hw, r/thr);                    // 1 at the cone's angular OR radial edge
+    return e<=1 ? 1 : Math.max(0.001, Math.exp(-((e-1)**2)*4));
+  }
+  const cw=s.cw||0, cd=s.cd||0; if(!(cw>0 && cd>0)) return 1;     // ceiling/sub: ellipse footprint
   const ca=(s.ca||0)*Math.PI/180, cs=Math.cos(ca), sn=Math.sin(ca);
-  let cx=s.x, cy=s.y; if(s.type===1){ cx+=cw*cs; cy+=cw*sn; }   // wall: lobe thrown forward
-  const dx=ox-cx, dy=oy-cy, lx=dx*cs+dy*sn, ly=-dx*sn+dy*cs;
+  const dx=ox-s.x, dy=oy-s.y, lx=dx*cs+dy*sn, ly=-dx*sn+dy*cs;
   const e=Math.sqrt((lx/cw)**2+(ly/cd)**2);
   return e<=1 ? 1 : Math.max(0.001, Math.exp(-((e-1)**2)*4));
 }
@@ -285,7 +304,7 @@ function computeGains(obj){
 // The effect runs for real in the JSFX (so it renders); this mirrors the motion in the view.
 // Orbit/Oscillate are phase-exact; Drift is an approximation (the plug-in's is random).
 function effPos(o){
-  if(!o.effect) return {x:o.x,y:o.y,z:o.z};
+  if(!o.effect || state.fxPaused) return {x:o.x,y:o.y,z:o.z};   // paused => sit at the base position
   const t=performance.now()/1000, ph=2*Math.PI*(o.rate||0)*t, d=o.depth||0;
   let x=o.x,y=o.y,z=o.z;
   if(o.effect===1){ x=o.x+d*Math.cos(ph); y=o.y+d*Math.sin(ph); }                       // orbit
@@ -294,7 +313,7 @@ function effPos(o){
   return {x:clamp(x),y:clamp(y),z:clamp(z,0,1)};                                          // effect 3 (spread) doesn't move
 }
 let fxAnim=false;
-const anyEffect=()=>state.objects.some(o=>o.effect>0 && o.visible!==false);
+const anyEffect=()=>!state.fxPaused && state.objects.some(o=>o.effect>0 && o.visible!==false);
 function fxTick(){ if(!fxAnim) return; render(); updateLiveFaders(); requestAnimationFrame(fxTick); }
 function updateFxAnim(){ const need=anyEffect();
   if(need && !fxAnim){ fxAnim=true; requestAnimationFrame(fxTick); }
@@ -333,22 +352,35 @@ function drawGrid(ctx,w,h){
   ctx.stroke();
 }
 function drawSpeaker(ctx,sx,sy,name,sel){
+  if(sel){ ctx.strokeStyle='#39c0ed'; ctx.lineWidth=2; ctx.strokeRect(sx-8,sy-8,16,16); }   // clear selection ring
   ctx.fillStyle = sel?'#fff':'#9fb0c0';
   ctx.fillRect(sx-5,sy-5,10,10);
-  ctx.strokeStyle = sel?'var(--accent)':'#2a323c';
-  ctx.fillStyle='#7f8c99'; ctx.font='10px '+getComputedStyle(document.body).getPropertyValue('--mono');
+  ctx.fillStyle = sel?'#cfe9f6':'#7f8c99'; ctx.font='10px '+getComputedStyle(document.body).getPropertyValue('--mono');
   ctx.fillText(name, sx+8, sy+3);
 }
-// speaker coverage footprints (top view) — only drawn for speakers with coverage set
+// speaker coverage footprints (top view) — only drawn in Edit-room mode, so the planner stays clean.
+// Ceiling/sub draw an ellipse; wall draws a wedge/cone (beam width + throw) along its angle.
 function drawCoverage(ctx,w,h){
+  if(state.mode!=='room') return;                          // hidden while panning objects
   const sxS=(w-2*PAD)/2, syS=(h-2*PAD)/2;
-  state.speakers.forEach(s=>{ const cw=s.cw||0, cd=s.cd||0; if(!(cw>0&&cd>0)) return;
-    let ex=s.x, ey=s.y; if(s.type===1){ const car=(s.ca||0)*Math.PI/180; ex+=cw*Math.cos(car); ey+=cw*Math.sin(car); }  // wall lobe forward
-    const [cx,cy]=topXY(ex,ey,w,h), sel=s.id===state.selSpk;
+  state.speakers.forEach(s=>{ const sel=s.id===state.selSpk;
+    const fill = sel?'rgba(57,192,237,0.16)':'rgba(57,192,237,0.05)';
+    const stroke = sel?'rgba(57,192,237,0.9)':'rgba(57,192,237,0.28)', lw = sel?1.5:1;
+    if((s.type||0)===1){                                   // wall: wedge/cone
+      const thr=s.cw||0; if(!(thr>0)) return;
+      const ca=(s.ca||0)*Math.PI/180, hw=Math.max(1,(s.cbw||90))*0.5*Math.PI/180, N=18;
+      const [ox,oy]=topXY(s.x,s.y,w,h);
+      ctx.beginPath(); ctx.moveTo(ox,oy);
+      for(let k=0;k<=N;k++){ const a=ca-hw+(2*hw)*k/N, [px,py]=topXY(s.x+thr*Math.cos(a),s.y+thr*Math.sin(a),w,h); ctx.lineTo(px,py); }
+      ctx.closePath();
+      ctx.fillStyle=fill; ctx.fill(); ctx.strokeStyle=stroke; ctx.lineWidth=lw; ctx.stroke();
+      return;
+    }
+    const cw=s.cw||0, cd=s.cd||0; if(!(cw>0&&cd>0)) return; // ceiling/sub: ellipse
+    const [cx,cy]=topXY(s.x,s.y,w,h);
     ctx.save(); ctx.translate(cx,cy); ctx.rotate(-(s.ca||0)*Math.PI/180);   // screen Y is flipped vs world
     ctx.beginPath(); ctx.ellipse(0,0,Math.max(1,cw*sxS),Math.max(1,cd*syS),0,0,Math.PI*2);
-    ctx.fillStyle = sel?'rgba(57,192,237,0.12)':'rgba(57,192,237,0.05)'; ctx.fill();
-    ctx.strokeStyle = sel?'rgba(57,192,237,0.9)':'rgba(57,192,237,0.3)'; ctx.lineWidth = sel?1.5:1; ctx.stroke();
+    ctx.fillStyle=fill; ctx.fill(); ctx.strokeStyle=stroke; ctx.lineWidth=lw; ctx.stroke();
     ctx.restore();
   });
 }
@@ -385,9 +417,9 @@ function render(){
   // objects (drawn at the effective position, with the effect path behind)
   state.objects.forEach(o=>{ if(o.visible===false) return;
     if(o.effect) drawFxPath(ctxT,o,T.w,T.h);
-    const p=effPos(o); const [ox,oy]=topXY(p.x,p.y,T.w,T.h);
-    ctxT.beginPath(); ctxT.arc(ox,oy,o.id===state.selObj?9:7,0,7); ctxT.fillStyle=o.color; ctxT.fill();
-    if(o.id===state.selObj){ ctxT.strokeStyle='#fff'; ctxT.lineWidth=2; ctxT.stroke(); }
+    const p=effPos(o); const [ox,oy]=topXY(p.x,p.y,T.w,T.h), sel=state.selObjs.includes(o.id);
+    ctxT.beginPath(); ctxT.arc(ox,oy,sel?9:7,0,7); ctxT.fillStyle=o.color; ctxT.fill();
+    if(sel){ ctxT.strokeStyle=o.id===state.selObj?'#fff':'#39c0ed'; ctxT.lineWidth=2; ctxT.stroke(); }
     ctxT.fillStyle='#0c0f13'; ctxT.font='bold 9px sans-serif'; ctxT.textAlign='center'; ctxT.textBaseline='middle';
     ctxT.fillText((state.objects.indexOf(o)+1), ox, oy); ctxT.textAlign='start'; ctxT.textBaseline='alphabetic';
   });
@@ -403,9 +435,9 @@ function render(){
     }); ctxF.globalAlpha=1;
   });
   state.speakers.forEach(s=>{ const [sx,sz]=frontXZ(s.x,s.z,F.w,F.h); drawSpeaker(ctxF,sx,sz,s.name, s.id===state.selSpk); });
-  state.objects.forEach(o=>{ if(o.visible===false) return; const p=effPos(o); const [ox,oz]=frontXZ(p.x,p.z,F.w,F.h);
-    ctxF.beginPath(); ctxF.arc(ox,oz,o.id===state.selObj?8:6,0,7); ctxF.fillStyle=o.color; ctxF.fill();
-    if(o.id===state.selObj){ ctxF.strokeStyle='#fff'; ctxF.lineWidth=2; ctxF.stroke(); }
+  state.objects.forEach(o=>{ if(o.visible===false) return; const p=effPos(o); const [ox,oz]=frontXZ(p.x,p.z,F.w,F.h), sel=state.selObjs.includes(o.id);
+    ctxF.beginPath(); ctxF.arc(ox,oz,sel?8:6,0,7); ctxF.fillStyle=o.color; ctxF.fill();
+    if(sel){ ctxF.strokeStyle=o.id===state.selObj?'#fff':'#39c0ed'; ctxF.lineWidth=2; ctxF.stroke(); }
   });
 }
 
@@ -495,9 +527,24 @@ async function pollState(){ if(!state.bridge.connected) return;   // 'Follow' �
 
 //============================================================ object / speaker CRUD
 // objects are created by REAPER (one per track), not in the UI — see applyImport()
-function selectObject(id){ state.selObj=id; state.selSpk=null; syncObjEditor(); renderLists(); }
-function selectSpeaker(id){ state.selSpk=id; syncSpkEditor(); renderLists(); }
-function addSpeaker(){ state.speakers.push({id:uid(),name:'Spk'+(state.speakers.length+1),x:0,y:0,z:0,lfe:0,ch:state.speakers.length+1,cw:0,cd:0,ca:0,type:0}); selectSpeaker(state.speakers[state.speakers.length-1].id); renderAll(); pushRoom(); }
+// mod: 'toggle' (Ctrl/Cmd-click), 'range' (Shift-click), or undefined (single). Multi-select drives
+// the effect controls — editing an effect applies it to every selected object.
+function selectObject(id, mod){
+  const ids=state.objects.map(o=>o.id);
+  if(mod==='toggle'){
+    const i=state.selObjs.indexOf(id);
+    if(i>=0){ state.selObjs.splice(i,1); state.selObj=state.selObjs[state.selObjs.length-1]||null; }
+    else { state.selObjs.push(id); state.selObj=id; }
+  } else if(mod==='range' && state.selObj){
+    const a=ids.indexOf(state.selObj), b=ids.indexOf(id);
+    if(a>=0 && b>=0){ const lo=Math.min(a,b), hi=Math.max(a,b); state.selObjs=ids.slice(lo,hi+1); state.selObj=id; }
+    else { state.selObjs=[id]; state.selObj=id; }
+  } else { state.selObjs=[id]; state.selObj=id; }
+  state.selSpk=null; syncObjEditor(); renderLists(); render();
+}
+function selectSpeaker(id){ state.selSpk=id; syncSpkEditor(); renderLists(); render(); }   // also highlight on canvas
+const curSet=()=>state.objects.filter(o=>state.selObjs.includes(o.id));   // every selected object
+function addSpeaker(){ state.speakers.push({id:uid(),name:'Spk'+(state.speakers.length+1),x:0,y:0,z:0,lfe:0,ch:state.speakers.length+1,cw:0,cd:0,ca:0,cbw:90,type:0}); selectSpeaker(state.speakers[state.speakers.length-1].id); renderAll(); pushRoom(); }
 function delSpeaker(id){ state.speakers=state.speakers.filter(s=>s.id!==id); state.speakers.forEach((s,i)=>s.ch=i+1); if(state.selSpk===id)state.selSpk=null; renderAll(); pushRoom(); }
 
 //============================================================ editors <-> state
@@ -513,13 +560,20 @@ function syncObjEditor(){
   const rate=o.rate==null?0.3:o.rate, depth=o.depth==null?0.3:o.depth;
   $('oFx').value=o.effect||0; $('oFr').value=rateToPct(rate); $('oFrv').textContent=rateLabel(rate);
   $('oFd').value=depth; $('oFdv').textContent=xyToM(depth); $('oFa').value=o.axis||0;
+  const n=state.selObjs.length; const fs=$('fxScope'); if(fs) fs.innerHTML = n>1 ? `<b style="color:var(--accent)">Applying to ${n} objects.</b> ` : '';
+  const bs=$('bakeStatus'); if(bs){ const baked=curSet().filter(o=>o.baked); const me=o.baked;
+    bs.innerHTML = me ? `<span style="color:var(--accent2)">✓ baked: ${FXNAME[me.effect]||'fx'} → automation · live effect off</span>`
+      : baked.length>1 ? `<span style="color:var(--accent2)">✓ ${baked.length} of the selection baked</span>` : ''; }
 }
 function syncSpkEditor(){ const s=state.speakers.find(x=>x.id===state.selSpk); const e=$('spkEditor'); if(!e) return;
   e.style.display = s?'block':'none'; if(!s) return;
-  const U=mPerU(), H=state.room.h||4;
+  const U=mPerU(), H=state.room.h||4, wall=(s.type||0)===1;
   $('sType').value=s.type||0; $('sName').value=s.name;
   $('sX').value=(s.x*U).toFixed(2); $('sY').value=(s.y*U).toFixed(2); $('sZ').value=(s.z*H).toFixed(2); $('sLfe').checked=!!s.lfe;
+  $('covEllipse').style.display = wall?'none':'grid';
+  $('covWedge').style.display   = wall?'grid':'none';
   $('sCW').value=((s.cw||0)*U).toFixed(2); $('sCD').value=((s.cd||0)*U).toFixed(2); $('sCA').value=Math.round(s.ca||0);
+  $('sWThrow').value=((s.cw||0)*U).toFixed(2); $('sWBeam').value=Math.round(s.cbw||90); $('sWAim').value=Math.round(s.ca||0);
 }
 // speaker editor removed — speakers are read-only, derived from the track layout
 function renderLists(){
@@ -536,9 +590,10 @@ function renderLists(){
       h.querySelector('.vis').onclick=()=>{ const show=arr.every(([o])=>o.visible===false); arr.forEach(([o])=>o.visible=show); renderLists(); render(); };
       ol.appendChild(h);
     }
-    arr.forEach(([o,i])=>{ const d=document.createElement('div'); d.className='item'+(o.id===state.selObj?' sel':'')+(o.visible===false?' hidden':'');
+    arr.forEach(([o,i])=>{ const d=document.createElement('div'); d.className='item'+(state.selObjs.includes(o.id)?' sel':'')+(o.visible===false?' hidden':'');
       d.innerHTML=`<span class="sw" style="background:${o.color}"></span><span class="nm">${i+1}. ${o.name}</span><span class="meta">T${o.osc.track}</span><span class="vis" title="show / hide">${o.visible===false?'○':'●'}</span>`;
-      d.onclick=e=>{ if(e.target.classList.contains('vis')){ o.visible=(o.visible===false); renderLists(); render(); } else selectObject(o.id); };
+      d.onclick=e=>{ if(e.target.classList.contains('vis')){ o.visible=(o.visible===false); renderLists(); render(); }
+        else selectObject(o.id, (e.metaKey||e.ctrlKey)?'toggle':e.shiftKey?'range':undefined); };
       ol.appendChild(d); });
   });
   // speakers (the room)
@@ -571,15 +626,76 @@ function num(el){ const v=parseFloat(el.value); return isNaN(v)?0:v; }
   $(id+'v').textContent = id==='oX'||id==='oY'?xyToM(v) : id==='oZ'?zToM(v) : v.toFixed(2);
   scheduleSend(o,{oX:'x',oY:'y',oZ:'z',oG:'g',oL:'l'}[id]); render(); });
 ['oX','oY','oZ','oG','oL'].forEach(id=>$(id).onchange=()=>{ const o=cur(); if(o)sendObject(o); });
-// effects engine controls
-$('oFx').onchange=e=>{ const o=cur(); if(!o)return; o.effect=parseInt(e.target.value,10); sendFx(o); syncObjEditor(); render(); };
-$('oFa').onchange=e=>{ const o=cur(); if(!o)return; o.axis=parseInt(e.target.value,10); sendFx(o); render(); };
-$('oFr').oninput=e=>{ const o=cur(); if(!o)return; o.rate=pctToRate(parseFloat(e.target.value)); $('oFrv').textContent=rateLabel(o.rate); sendFx(o); render(); };
-$('oFd').oninput=e=>{ const o=cur(); if(!o)return; o.depth=parseFloat(e.target.value); $('oFdv').textContent=xyToM(o.depth); sendFx(o); render(); };
+// effects engine controls — applied to every selected object (multi-select), so you can shape a
+// whole group of objects at once. Falls back to the single current object.
+function applyFxToSel(setter){ const set=curSet(), list=set.length?set:[cur()].filter(Boolean); list.forEach(o=>{ setter(o); sendFx(o); }); render(); }
+$('oFx').onchange=e=>{ const v=parseInt(e.target.value,10); applyFxToSel(o=>o.effect=v); syncObjEditor(); };
+$('oFa').onchange=e=>{ const v=parseInt(e.target.value,10); applyFxToSel(o=>o.axis=v); };
+$('oFr').oninput=e=>{ const r=pctToRate(parseFloat(e.target.value)); $('oFrv').textContent=rateLabel(r); applyFxToSel(o=>o.rate=r); };
+$('oFd').oninput=e=>{ const d=parseFloat(e.target.value); $('oFdv').textContent=xyToM(d); applyFxToSel(o=>o.depth=d); };
 function cur(){ return state.objects.find(x=>x.id===state.selObj); }
 
 $('oTest').onclick=testSweep;
+
+// Bake FX -> envelopes. Operates on the current selection (multi-select), tells the Live script to
+// write each object's effect motion to X/Y/Z automation and turn the live effect off, so an offline
+// render reads the envelopes at full speed. Clear removes the points and re-enables the live effect.
+const FXNAME=['off','orbit','oscillate','spread','drift'];
+async function postBake(action,tracks){
+  try{ const r=await fetch(state.bridge.url+'/bake',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,tracks})}); setConn(r.ok); return r.ok; }
+  catch(e){ setConn(false); return false; }
+}
+async function bakeFx(clear){
+  const set=curSet(), list=(set.length?set:[cur()].filter(Boolean)).filter(o=>o.osc);
+  const h=$('hdrSent');
+  if(!list.length){ alert('Select an object first.'); return; }
+  if(bridgeVersion<5){ alert('The running bridge is out of date — quit it and relaunch to use Bake.'); return; }
+  if(!clear){
+    const bakeable=list.filter(o=>o.effect>0 && o.effect!==3);
+    if(!bakeable.length){ alert('None of the selected objects has a bakeable effect (Orbit / Oscillate / Drift). Spread isn’t a position move.'); return; }
+    const ok=await postBake('bake', bakeable.map(o=>o.osc.track));
+    if(ok){ bakeable.forEach(o=>{ o.baked={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis}; o.effect=0; });
+      if(h) h.textContent='baked '+bakeable.length+' object(s) → X/Y/Z envelopes (render-ready)'; }
+    else if(h) h.textContent='bake failed — is the bridge + Live script running?';
+  } else {
+    const ok=await postBake('clear', list.map(o=>o.osc.track));
+    if(ok){ list.forEach(o=>{ if(o.baked){ o.effect=o.baked.effect; o.rate=o.baked.rate; o.depth=o.baked.depth; o.axis=o.baked.axis; o.baked=null; sendFx(o); } });
+      if(h) h.textContent='cleared bake on '+list.length+' object(s)'; }
+    else if(h) h.textContent='clear failed — is the bridge running?';
+  }
+  syncObjEditor(); renderLists(); render(); updateFxAnim();
+}
+$('oBake').onclick=()=>bakeFx(false);
+$('oClearBake').onclick=()=>bakeFx(true);
 $('addSpk').onclick=addSpeaker;
+
+// Save / export / import speaker layouts — room + speakers as a portable JSON file.
+function exportLayout(){
+  const data={ format:'tkSurroundPanner.layout', version:1, project:state.project, room:{...state.room},
+    speakers: state.speakers.map(s=>({name:s.name, type:s.type||0, x:s.x, y:s.y, z:s.z, lfe:s.lfe?1:0,
+      cw:s.cw||0, cd:s.cd||0, ca:s.ca||0, cbw:s.cbw||90})) };
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=(state.project||'layout').replace(/[^\w.-]+/g,'_')+'-layout.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  const h=$('hdrSent'); if(h) h.textContent='layout exported · '+state.speakers.length+' speakers';
+}
+function importLayout(e){ const f=e.target.files&&e.target.files[0]; if(!f){ return; }
+  const rd=new FileReader();
+  rd.onload=()=>{ try{ const d=JSON.parse(rd.result);
+      if(!Array.isArray(d.speakers)) throw new Error('no speakers in file');
+      if(d.room) state.room={w:+d.room.w||10, d:+d.room.d||10, h:+d.room.h||4};
+      state.speakers=d.speakers.map((s,i)=>({id:uid(), name:s.name||('Spk'+(i+1)), type:s.type||0,
+        x:+s.x||0, y:+s.y||0, z:+s.z||0, lfe:s.lfe?1:0,
+        cw:+s.cw||0, cd:+s.cd||0, ca:+s.ca||0, cbw:+s.cbw||90, ch:i+1}));
+      state.selSpk=null; renderAll(); pushRoom();
+      const h=$('hdrSent'); if(h) h.textContent='layout imported · '+state.speakers.length+' speakers';
+    }catch(err){ alert('Could not read that layout file: '+err.message); } };
+  rd.readAsText(f); e.target.value='';
+}
+$('expLayout').onclick=exportLayout;
+$('impLayout').onclick=()=>$('impFile').click();
+$('impFile').onchange=importLayout;
 // room size (metres) — display scale only; re-renders all the metre readouts
 ['rW','rD','rH'].forEach((id,k)=>$(id).oninput=e=>{ state.room[['w','d','h'][k]]=parseFloat(e.target.value)||1; renderAll(); });
 function syncRoomInputs(){ if(!$('rW'))return; $('rW').value=state.room.w; $('rD').value=state.room.d; $('rH').value=state.room.h; }
@@ -590,15 +706,31 @@ $('sName').oninput=e=>{ const s=curS(); if(s){ s.name=e.target.value; renderList
   if(id==='sX')s.x=v/mPerU(); if(id==='sY')s.y=v/mPerU(); if(id==='sZ')s.z=v/(state.room.h||4); render(); pushRoom(); });
 ['sCW','sCD','sCA'].forEach(id=>$(id).oninput=e=>{ const s=curS(); if(!s)return; const v=parseFloat(e.target.value)||0;
   if(id==='sCW')s.cw=v/mPerU(); if(id==='sCD')s.cd=v/mPerU(); if(id==='sCA')s.ca=v; render(); pushRoom(); });
-$('sType').onchange=e=>{ const s=curS(); if(s){ s.type=parseInt(e.target.value,10); render(); pushRoom(); } };
+// wall wedge: Throw (m) -> cw, Beam° -> cbw, Aim° -> ca
+$('sWThrow').oninput=e=>{ const s=curS(); if(s){ s.cw=(parseFloat(e.target.value)||0)/mPerU(); render(); pushRoom(); } };
+$('sWBeam').oninput =e=>{ const s=curS(); if(s){ s.cbw=parseFloat(e.target.value)||90; render(); pushRoom(); } };
+$('sWAim').oninput  =e=>{ const s=curS(); if(s){ s.ca=parseFloat(e.target.value)||0; render(); pushRoom(); } };
+$('sType').onchange=e=>{ const s=curS(); if(s){ s.type=parseInt(e.target.value,10); syncSpkEditor(); render(); pushRoom(); } };
 $('sLfe').onchange=e=>{ const s=curS(); if(s){ s.lfe=e.target.checked?1:0; renderLists(); render(); pushRoom(); } };
 let roomTimer=0;
 function pushRoom(){ clearTimeout(roomTimer); roomTimer=setTimeout(()=>{
-  const sp=state.speakers.map(s=>({x:+(+s.x).toFixed(4),y:+(+s.y).toFixed(4),z:+(+s.z).toFixed(4),lfe:s.lfe?1:0,cw:+(+(s.cw||0)).toFixed(4),cd:+(+(s.cd||0)).toFixed(4),ca:+(+(s.ca||0)).toFixed(1),ty:s.type||0}));
+  const sp=state.speakers.map(s=>({x:+(+s.x).toFixed(4),y:+(+s.y).toFixed(4),z:+(+s.z).toFixed(4),lfe:s.lfe?1:0,cw:+(+(s.cw||0)).toFixed(4),cd:+(+(s.cd||0)).toFixed(4),ca:+(+(s.ca||0)).toFixed(1),bw:+(+(s.cbw||90)).toFixed(1),ty:s.type||0}));
   fetch(state.bridge.url+'/room',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({speakers:sp})}).catch(()=>{});
 },150); }
 function setMode(m){ state.mode=m; const b=$('modeRoom'); if(b) b.classList.toggle('on', m==='room'); render(); }
 $('modeRoom').onclick=()=>setMode(state.mode==='room'?'objects':'room');
+
+// Pause FX — freeze every object effect at its base position. In the plug‑in we set Effect=Off
+// (so the audio stops moving) while keeping each object's effect/rate/depth/axis in the UI; resume
+// re-sends them. The preview animation also stops (effPos returns the base while paused).
+function setFxPaused(on){ state.fxPaused=on; $('fxPause').classList.toggle('on',on);
+  const targets=state.objects.filter(o=>o.osc && o.effect>0);
+  if(on){ const msgs=targets.map(o=>({addr:`/track/${o.osc.track}/fx/${o.osc.fx}/fxparam/${o.osc.pe}/value`,value:0})); if(msgs.length) postOSC(msgs); }
+  else { targets.forEach(o=>sendFx(o)); }
+  const h=$('hdrSent'); if(h) h.textContent='effects '+(on?'paused (frozen at base)':'resumed');
+  updateFxAnim(); syncObjEditor(); render();
+}
+$('fxPause').onclick=()=>setFxPaused(!state.fxPaused);
 // The room is defined by the user (preset + Edit-room), not derived from REAPER track channel
 // counts. The UI pushes it to the plug-in and the Live script grows each track and its bus to
 // match, so the room — not a track's transient channel width — is the single source of truth.
@@ -642,9 +774,9 @@ function applyImport(d){
   if(d.room) state.room=d.room;
   if(d.speakers) state.speakers=d.speakers;
   // the UI owns the effect settings (the session doesn't carry them) — keep them across a reload
-  const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis}; });
+  const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis,baked:o.baked}; });
   if(d.objects) state.objects=d.objects;
-  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; } });
+  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; if(pf.baked) o.baked=pf.baked; } });
   state.panner=Object.assign(state.panner,d.panner||{});
   const n=state.objects.length||1;
   state.objects.forEach((o,i)=>{
@@ -676,7 +808,7 @@ function applyImport(d){
   // Live script grows each track + its bus to match. It is NOT derived from a track's channel
   // count — doing that collapsed a 12-speaker room to stereo whenever the first track briefly
   // reported 2 channels, which is why the Output meters only ever showed channels 1 & 2.
-  state.selObj=null; state.selSpk=null;
+  state.selObj=null; state.selObjs=[]; state.selSpk=null;
   $('pRoll').value=rollToFocus(state.panner.rolloff); $('pBlur').value=blurToSpread(state.panner.blur);
   $('pRollv').textContent=rollToFocus(state.panner.rolloff)+'%'; $('pBlurv').textContent=blurToSpread(state.panner.blur)+'%';
   renderAll(); pushRoom(); pushLaw();   // sync the law to every freshly-loaded object's plugin

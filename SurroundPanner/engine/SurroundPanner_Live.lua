@@ -1,5 +1,5 @@
 --[[
-  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.11.0
+  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.13.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -28,10 +28,11 @@ local CMDS   = IPC .. "/cmds.json"
 local SESS   = IPC .. "/session.json"
 local ROOM   = IPC .. "/room.json"
 local LEVELS = IPC .. "/levels.json"
+local BAKE   = IPC .. "/bake.json"
 local MATCH = "surroundpanner"   -- matches "JS: tk SurroundPanner", not "ReaSurroundPan"
 local MB     = 1000              -- gmem meter base, matches the JSFX (gmem[MB+ch] = peak per output)
 local MAXSPK = 16                -- matches the JSFX MAXOUT
-local STRIDE = 8                 -- per-speaker gmem block: x, y, z, lfe, cw, cd, ca, type (matches the JSFX)
+local STRIDE = 9                 -- per-speaker gmem block: x, y, z, lfe, cw, cd, ca, type, beamwidth (matches the JSFX)
 
 local function setstate(on)
   reaper.SetExtState(NS, "live", on and "1" or "0", false)
@@ -126,6 +127,105 @@ local function applyCmds(insts)
   end
 end
 
+-- bake the per-object effect (Orbit/Oscillate/Drift) into X/Y/Z FX-parameter envelopes, so an
+-- offline render reads automation instead of running the live LFO (full-speed, not realtime).
+-- bake.json = {"seq":N,"action":"bake"|"clear","tracks":[t,...]}. Mirrors the JSFX effect math.
+local lastBakeSeq = -1
+local BAKE_DT = 1/50          -- envelope resolution (s); plenty for the slow movement effects
+local BAKE_MAXPTS = 60000     -- safety cap on points per envelope
+
+-- normalized 0..1 value for an FX slider's native value (FX-param envelopes are normalized)
+local function normParam(tr, fx, slider, val)
+  local _, mn, mx = reaper.TrackFX_GetParam(tr, fx, slider)
+  if mn and mx and mx > mn then
+    local nv = (val - mn) / (mx - mn)
+    return nv < 0 and 0 or (nv > 1 and 1 or nv)
+  end
+  return val
+end
+
+-- write one track's effect motion to its X/Y/Z envelopes over the time selection (whole project
+-- if none), then turn the live Effect off. Returns true if it baked anything.
+local function bakeTrack(inst)
+  local tr, fx = inst.tr, inst.fx
+  local ft = math.floor(reaper.TrackFX_GetParam(tr, fx, 7) + 0.5)   -- Effect type
+  if ft <= 0 or ft == 3 then return false end                      -- Off / Spread: nothing to bake to a position
+  local rate  = reaper.TrackFX_GetParam(tr, fx, 8)
+  local depth = reaper.TrackFX_GetParam(tr, fx, 9)
+  local ax    = math.floor(reaper.TrackFX_GetParam(tr, fx, 10) + 0.5)
+  local bx, by, bz = reaper.TrackFX_GetParam(tr, fx, 0), reaper.TrackFX_GetParam(tr, fx, 1), reaper.TrackFX_GetParam(tr, fx, 2)
+  local t0, t1 = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
+  if t1 <= t0 then t0 = 0; t1 = reaper.GetProjectLength(0) end
+  if t1 <= t0 then return false end
+  local dt = BAKE_DT
+  local nsteps = math.floor((t1 - t0) / dt)
+  if nsteps > BAKE_MAXPTS then dt = (t1 - t0) / BAKE_MAXPTS; nsteps = BAKE_MAXPTS end
+  local envX = reaper.GetFXEnvelope(tr, fx, 0, true)
+  local envY = reaper.GetFXEnvelope(tr, fx, 1, true)
+  local envZ = reaper.GetFXEnvelope(tr, fx, 2, true)
+  reaper.DeleteEnvelopePointRange(envX, t0 - 1e-9, t1 + 1e-9)        -- overwrite any previous bake in range
+  reaper.DeleteEnvelopePointRange(envY, t0 - 1e-9, t1 + 1e-9)
+  reaper.DeleteEnvelopePointRange(envZ, t0 - 1e-9, t1 + 1e-9)
+  -- deterministic smoothed random for Drift (character match; the live one is true-random)
+  local seed = (math.floor(reaper.GetMediaTrackInfo_Value(tr, "IP_TRACKNUMBER")) * 2654435761) % 2147483647 + 1
+  local function rnd() seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 end
+  local drx, dry, dtx, dty, nextDrift = 0, 0, 0, 0, 0
+  local k = 0
+  while k <= nsteps do
+    local rt = k * dt                       -- phase time, relative to the range start
+    local ph = 2 * math.pi * rate * rt
+    local ex, ey, ez = bx, by, bz
+    if ft == 1 then                         -- Orbit
+      ex = bx + depth * math.cos(ph); ey = by + depth * math.sin(ph)
+    elseif ft == 2 then                     -- Oscillate
+      local o = depth * math.sin(ph)
+      if ax == 0 then ex = bx + o elseif ax == 1 then ey = by + o else ez = bz + o end
+    elseif ft == 4 then                     -- Drift
+      if rt >= nextDrift then nextDrift = rt + 0.5; dtx = (rnd() * 2 - 1) * depth; dty = (rnd() * 2 - 1) * depth end
+      drx = drx + 0.08 * (dtx - drx); dry = dry + 0.08 * (dty - dry)
+      ex = bx + drx; ey = by + dry
+    end
+    ex = ex < -1 and -1 or (ex > 1 and 1 or ex)
+    ey = ey < -1 and -1 or (ey > 1 and 1 or ey)
+    ez = ez < 0 and 0 or (ez > 1 and 1 or ez)
+    local t = t0 + rt
+    reaper.InsertEnvelopePoint(envX, t, normParam(tr, fx, 0, ex), 0, 0, false, true)
+    reaper.InsertEnvelopePoint(envY, t, normParam(tr, fx, 1, ey), 0, 0, false, true)
+    reaper.InsertEnvelopePoint(envZ, t, normParam(tr, fx, 2, ez), 0, 0, false, true)
+    k = k + 1
+  end
+  reaper.Envelope_SortPoints(envX); reaper.Envelope_SortPoints(envY); reaper.Envelope_SortPoints(envZ)
+  setparam(tr, fx, 7, 0)                    -- live Effect -> Off, so it doesn't double the baked move
+  return true
+end
+
+-- remove a baked move: clear all points on the X/Y/Z envelopes (the UI re-enables the effect)
+local function clearBake(inst)
+  local tr, fx = inst.tr, inst.fx
+  local hi = reaper.GetProjectLength(0) + 1e6
+  for p = 0, 2 do
+    local env = reaper.GetFXEnvelope(tr, fx, p, false)
+    if env then reaper.DeleteEnvelopePointRange(env, -1e6, hi); reaper.Envelope_SortPoints(env) end
+  end
+end
+
+local function applyBake(insts)
+  local s = readfile(BAKE); if not s then return end
+  local seq = tonumber(s:match('"seq":(%-?%d+)')); if not seq or seq == lastBakeSeq then return end
+  lastBakeSeq = seq
+  local action = s:match('"action":"(%a+)"') or "bake"
+  local tlist  = s:match('"tracks":%[([%d,%s]*)%]') or ""
+  reaper.Undo_BeginBlock(); reaper.PreventUIRefresh(1)
+  for n in tlist:gmatch('(%d+)') do
+    local inst = insts[tonumber(n)]
+    if inst then if action == "clear" then clearBake(inst) else bakeTrack(inst) end end
+  end
+  reaper.PreventUIRefresh(-1)
+  reaper.Undo_EndBlock(action == "clear" and "tkSurroundPanner: clear baked effect"
+                                          or "tkSurroundPanner: bake effect to envelopes", -1)
+  reaper.UpdateArrange()
+end
+
 -- publish session.json (positions read straight from the sliders) -
 local function buildSession()
   local objs, tracks, stack = {}, {}, {}
@@ -173,10 +273,11 @@ local function loadRoom()
       local cd = tonumber(blk:match('"cd":%s*([%d.]+)')) or 0
       local ca = tonumber(blk:match('"ca":%s*(%-?[%d.]+)')) or 0
       local ty = tonumber(blk:match('"ty":%s*(%d)')) or 0      -- mount type: 0 ceiling, 1 wall, 2 sub
+      local bw = tonumber(blk:match('"bw":%s*([%d.]+)')) or 90 -- wall wedge beam width (degrees)
       local b = 1 + i*STRIDE
       reaper.gmem_write(b + 0, x);  reaper.gmem_write(b + 1, y);  reaper.gmem_write(b + 2, z)
       reaper.gmem_write(b + 3, lf); reaper.gmem_write(b + 4, cw); reaper.gmem_write(b + 5, cd)
-      reaper.gmem_write(b + 6, ca); reaper.gmem_write(b + 7, ty)
+      reaper.gmem_write(b + 6, ca); reaper.gmem_write(b + 7, ty); reaper.gmem_write(b + 8, bw)
       i = i + 1
     end
   end
@@ -224,6 +325,7 @@ local function loop()
   local ok, err = pcall(function()
     local insts = instances()
     applyCmds(insts)
+    applyBake(insts)
     loadRoom()
     local now = reaper.time_precise()
     if now - lastLevels > 0.08 then lastLevels = now; writeLevels() end   -- ~12 Hz meters
