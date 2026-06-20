@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tkSurroundPanner bridge — tk Audio Services  ·  app v0.12.0
+tkSurroundPanner bridge — tk Audio Services  ·  app v0.13.0
 =========================================================
 
 Connects the web UI to the SurroundPanner_Live.lua script running inside REAPER,
@@ -29,7 +29,7 @@ import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = 4
+VERSION = 5
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_ROOT = os.path.dirname(HERE)
 
@@ -43,13 +43,14 @@ def _reaper_resource():
 
 # Shared with SurroundPanner_Live.lua, which uses reaper.GetResourcePath()/tkSurroundPanner
 IPC_DIR = os.path.join(_reaper_resource(), "tkSurroundPanner")
-CMDS = SESSION = ROOM = LEVELS = ""
+CMDS = SESSION = ROOM = LEVELS = BAKE = ""
 def _set_paths():
-    global CMDS, SESSION, ROOM, LEVELS
+    global CMDS, SESSION, ROOM, LEVELS, BAKE
     CMDS = os.path.join(IPC_DIR, "cmds.json")
     SESSION = os.path.join(IPC_DIR, "session.json")
     ROOM = os.path.join(IPC_DIR, "room.json")
     LEVELS = os.path.join(IPC_DIR, "levels.json")
+    BAKE = os.path.join(IPC_DIR, "bake.json")
 _set_paths()
 
 ADDR_RE = re.compile(r"^/track/(\d+)/fx/(\d+)/fxparam/(\d+)/value$")
@@ -86,8 +87,27 @@ class Mailbox:
         os.replace(tmp, CMDS)
 
 
+class BakeBox:
+    """Writes bake.json with an incrementing seq so the Lua picks up each new bake/clear once."""
+    def __init__(self):
+        self.seq = 0
+        self.lock = threading.Lock()
+
+    def write(self, action, tracks):
+        action = "clear" if action == "clear" else "bake"
+        nums = ",".join(str(int(t)) for t in tracks)
+        with self.lock:
+            self.seq += 1
+            payload = '{"seq":%d,"action":"%s","tracks":[%s]}' % (self.seq, action, nums)
+        fd, tmp = tempfile.mkstemp(dir=IPC_DIR, suffix=".tmp")
+        with os.fdopen(fd, "w") as fh:
+            fh.write(payload)
+        os.replace(tmp, BAKE)
+
+
 class Handler(BaseHTTPRequestHandler):
     mailbox = None
+    bakebox = None
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -153,6 +173,10 @@ class Handler(BaseHTTPRequestHandler):
             if path in ("/set", "/osc"):              # object positions
                 self.mailbox.update(json.loads(raw).get("messages", []))
                 return self._send(200, b'{"ok":true}', "application/json")
+            if path == "/bake":                       # bake / clear FX -> envelopes
+                d = json.loads(raw)
+                self.bakebox.write(d.get("action", "bake"), d.get("tracks", []))
+                return self._send(200, b'{"ok":true}', "application/json")
             self._send(404, b"not found")
         except Exception as e:
             self._send(400, json.dumps({"ok": False, "error": str(e)}).encode())
@@ -171,6 +195,7 @@ def main():
         _set_paths()
     os.makedirs(IPC_DIR, exist_ok=True)
     Handler.mailbox = Mailbox()
+    Handler.bakebox = BakeBox()
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
 
     print("=" * 64)

@@ -86,7 +86,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.12.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.13.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -119,6 +119,9 @@
           <div class="row"><label>Rate</label><input type="range" id="oFr" min="0" max="100" step="0.5"><span class="val" id="oFrv">3.3 s</span></div>
           <div class="row"><label>Depth</label><input type="range" id="oFd" min="0" max="1" step="0.01"><span class="val" id="oFdv">0.3</span></div>
           <div class="row"><label>Axis</label><select id="oFa" title="Oscillate axis"><option value="0">X · L/R</option><option value="1">Y · F/R</option><option value="2">Z · Height</option></select></div>
+          <div class="mini"><button class="btn" id="oBake" title="Write the effect motion to X/Y/Z automation so a render runs offline at full speed">Bake → envelopes</button><button class="btn" id="oClearBake" title="Remove the baked automation and re-enable the live effect">Clear bake</button></div>
+          <div class="hint" id="bakeHint">Bakes the selected object(s)' Orbit / Oscillate / Drift motion to X/Y/Z automation over the time selection (whole project if none) and turns the live effect off — so an <b>offline render runs at full speed</b>. Re‑bake overwrites; Clear removes the points and re‑enables the effect. (Spread isn't a position move, so it can't be baked.)</div>
+          <div class="pill" id="bakeStatus" style="margin:2px 0 6px"></div>
           <div class="mini"><button class="btn" id="oTest">Test · sweep X</button></div>
           <div class="hint">Sweeps this object's X across the room so you can confirm the link — watch it move in REAPER. The track, FX and parameter mapping are filled in automatically by the Live script.</div>
         </div>
@@ -558,6 +561,9 @@ function syncObjEditor(){
   $('oFx').value=o.effect||0; $('oFr').value=rateToPct(rate); $('oFrv').textContent=rateLabel(rate);
   $('oFd').value=depth; $('oFdv').textContent=xyToM(depth); $('oFa').value=o.axis||0;
   const n=state.selObjs.length; const fs=$('fxScope'); if(fs) fs.innerHTML = n>1 ? `<b style="color:var(--accent)">Applying to ${n} objects.</b> ` : '';
+  const bs=$('bakeStatus'); if(bs){ const baked=curSet().filter(o=>o.baked); const me=o.baked;
+    bs.innerHTML = me ? `<span style="color:var(--accent2)">✓ baked: ${FXNAME[me.effect]||'fx'} → automation · live effect off</span>`
+      : baked.length>1 ? `<span style="color:var(--accent2)">✓ ${baked.length} of the selection baked</span>` : ''; }
 }
 function syncSpkEditor(){ const s=state.speakers.find(x=>x.id===state.selSpk); const e=$('spkEditor'); if(!e) return;
   e.style.display = s?'block':'none'; if(!s) return;
@@ -630,6 +636,37 @@ $('oFd').oninput=e=>{ const d=parseFloat(e.target.value); $('oFdv').textContent=
 function cur(){ return state.objects.find(x=>x.id===state.selObj); }
 
 $('oTest').onclick=testSweep;
+
+// Bake FX -> envelopes. Operates on the current selection (multi-select), tells the Live script to
+// write each object's effect motion to X/Y/Z automation and turn the live effect off, so an offline
+// render reads the envelopes at full speed. Clear removes the points and re-enables the live effect.
+const FXNAME=['off','orbit','oscillate','spread','drift'];
+async function postBake(action,tracks){
+  try{ const r=await fetch(state.bridge.url+'/bake',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,tracks})}); setConn(r.ok); return r.ok; }
+  catch(e){ setConn(false); return false; }
+}
+async function bakeFx(clear){
+  const set=curSet(), list=(set.length?set:[cur()].filter(Boolean)).filter(o=>o.osc);
+  const h=$('hdrSent');
+  if(!list.length){ alert('Select an object first.'); return; }
+  if(bridgeVersion<5){ alert('The running bridge is out of date — quit it and relaunch to use Bake.'); return; }
+  if(!clear){
+    const bakeable=list.filter(o=>o.effect>0 && o.effect!==3);
+    if(!bakeable.length){ alert('None of the selected objects has a bakeable effect (Orbit / Oscillate / Drift). Spread isn’t a position move.'); return; }
+    const ok=await postBake('bake', bakeable.map(o=>o.osc.track));
+    if(ok){ bakeable.forEach(o=>{ o.baked={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis}; o.effect=0; });
+      if(h) h.textContent='baked '+bakeable.length+' object(s) → X/Y/Z envelopes (render-ready)'; }
+    else if(h) h.textContent='bake failed — is the bridge + Live script running?';
+  } else {
+    const ok=await postBake('clear', list.map(o=>o.osc.track));
+    if(ok){ list.forEach(o=>{ if(o.baked){ o.effect=o.baked.effect; o.rate=o.baked.rate; o.depth=o.baked.depth; o.axis=o.baked.axis; o.baked=null; sendFx(o); } });
+      if(h) h.textContent='cleared bake on '+list.length+' object(s)'; }
+    else if(h) h.textContent='clear failed — is the bridge running?';
+  }
+  syncObjEditor(); renderLists(); render(); updateFxAnim();
+}
+$('oBake').onclick=()=>bakeFx(false);
+$('oClearBake').onclick=()=>bakeFx(true);
 $('addSpk').onclick=addSpeaker;
 
 // Save / export / import speaker layouts — room + speakers as a portable JSON file.
@@ -737,9 +774,9 @@ function applyImport(d){
   if(d.room) state.room=d.room;
   if(d.speakers) state.speakers=d.speakers;
   // the UI owns the effect settings (the session doesn't carry them) — keep them across a reload
-  const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis}; });
+  const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis,baked:o.baked}; });
   if(d.objects) state.objects=d.objects;
-  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; } });
+  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; if(pf.baked) o.baked=pf.baked; } });
   state.panner=Object.assign(state.panner,d.panner||{});
   const n=state.objects.length||1;
   state.objects.forEach((o,i)=>{

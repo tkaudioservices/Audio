@@ -3,6 +3,10 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.13.0
+- **Bake FX → envelopes.** Bake the selected object(s)' Orbit / Oscillate / Drift motion to X/Y/Z **FX‑parameter automation** over the time selection (whole project if none), then turn the live effect off — so an **offline render runs at full speed** instead of realtime through the plug‑in. The baked envelopes are normal REAPER automation: read and edit them on the track, **re‑bake to overwrite**, or **Clear bake** to remove the points and re‑enable the live effect. Operates on the multi‑selection. (Spread isn't a position move, so it can't be baked.) New bridge endpoint `POST /bake` and `bake.json` IPC; bridge protocol → 5.
+- The bake math mirrors the JSFX effect exactly (Orbit/Oscillate phase‑exact; Drift is a deterministic smoothed random walk matching the live character), normalised into each slider's range.
+
 ## v0.12.0
 - **Wall speakers are now a wedge/cone.** Wall-mounted speakers throw a triangular beam out from the point: **Throw** (how far the audio reaches, in metres), **Beam°** (cone width, default 90°), and **Aim°** (direction). Objects inside the cone get full feed with a soft edge outside — both the picture and the audio weighting. Ceiling/sub keep the ellipse footprint. (Replaces the old forward-ellipse lobe for walls.)
 - **Coverage shows only in *Edit room*.** Speaker footprints/cones draw while you're shaping the room and hide once you're panning objects, so the planner stays clean. The selected speaker's coverage and a clear selection ring are highlighted.
