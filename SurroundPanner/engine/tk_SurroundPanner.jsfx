@@ -1,4 +1,4 @@
-desc:tk SurroundPanner v0.16.0
+desc:tk SurroundPanner v0.19.0
 //  tk Audio Services — object panner for tkSurroundPanner
 //  2 in -> up to 16 out. DBAP, matching the web UI's latch-line view.
 //  Speaker layout is read live from shared memory (set by SurroundPanner_Live.lua
@@ -157,6 +157,7 @@ function applyfx() local(ft rate depth ax osc dt ph) (
 loadlayout();
 bx = slider1; by = slider2; bz = slider3;             // base position (the sliders the host/UI sets)
 pw1 = slider1; pw2 = slider2; pw3 = slider3;          // last X/Y/Z we wrote — to tell our fx writes from external moves
+pfx8 = slider8;                                       // last effect type — reset the LFO phase when it changes
 ex = bx; ey = by; ez = bz; xblur = 0;                 // live position seed (updated each @block by applyfx)
 calcgains(bx, by, bz, 0);
 
@@ -164,6 +165,10 @@ calcgains(bx, by, bz, 0);
 file_var(0, bx); file_var(0, by); file_var(0, bz);   // persist the base so a saved-mid-effect project restores it
 
 @slider
+// Reset the effect LFO phase to 0 whenever the effect type changes, so the plug-in re-anchors at
+// the same moment the UI does (the UI resets its preview phase on the same event) — keeps the two
+// in sync, and cleanly restarts the motion on an effect change.
+slider8 != pfx8 ? ( fxphase = 0; pfx8 = slider8; );
 // Re-capture the base only when X/Y/Z changed externally (host/UI/automation), not from our own
 // fx write-back: compare against the last value we wrote. So dragging an object during an effect
 // updates the base, but our per-block slider moves don't fight it.

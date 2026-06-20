@@ -3,6 +3,17 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.19.0
+- **Effect motion now syncs between the plug-in and the GUI.** They were two independent oscillators (the plug-in on the audio clock from when the effect was enabled, the browser on wall-clock from page load), so they drifted out of phase. Both now **reset their phase to 0 when the effect type changes**, sharing an anchor — so the plug-in's moving X/Y/Z faders and the web view line up for the slow design-rate effects that matter, and the motion cleanly restarts on an effect change. (Very fast rates may still show a small offset from the ~100 ms command latency; re-selecting the effect re-syncs.)
+
+## v0.18.0
+- **Trajectory recording.** A **● Record moves** toggle (Objects panel) arms REAPER's **latch automation** on the selected object(s) — or all — and arms their X/Y/Z envelopes. Press play in REAPER and drag objects, and the moves record straight to **editable automation** (then re‑bake/edit/clear like any bake). Turn it off and the tracks return to read. The live‑capture complement to Bake. New bridge endpoint `POST /automation` + `automation.json`; protocol → 7.
+- **Note:** this path is REAPER‑native (latch + envelope arming) and needs a REAPER test — see the caveat in the README.
+
+## v0.17.0
+- **Cue snapshots.** A new *Cues* panel stores the whole scene — every object's position, gain, mute/solo and effect (keyed by REAPER track). **Capture** the current scene, click a cue to **recall** it, and with **Morph > 0** the objects glide to the cue over that time (eased). **U** updates a cue to the current scene. Cues persist in the browser and **Export/Import** to a file, so a show's looks move between machines. The big one for live/theatre.
+- **Per-object solo / mute.** **M** and **S** on each object in the list. Mute silences an object; Solo silences everything else. Drives both the preview (latch lines / meters drop out) and the plug-in (via each object's Gain), so it's audible. Captured in cues.
+
 ## v0.16.0
 - **New plug-in: `tk SurroundMonitor` — rehearsal / headphone fold-down.** Put it on a stereo monitor track fed by your immersive bus and it folds all the speaker channels to stereo, so you can work without the full rig. It reads the **same gmem speaker layout** as the panner, so every channel is folded by its speaker's real angle.
   - **Stereo fold** — constant-power amplitude fold by each speaker's azimuth (mild rear attenuation, C at −3 dB, optional LFE fold). Light and robust; the rehearsal downmix.

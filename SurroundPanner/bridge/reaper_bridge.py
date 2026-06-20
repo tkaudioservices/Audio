@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tkSurroundPanner bridge — tk Audio Services  ·  app v0.16.0
+tkSurroundPanner bridge — tk Audio Services  ·  app v0.19.0
 =========================================================
 
 Connects the web UI to the SurroundPanner_Live.lua script running inside REAPER,
@@ -29,7 +29,7 @@ import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = 6
+VERSION = 7
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_ROOT = os.path.dirname(HERE)
 
@@ -43,14 +43,15 @@ def _reaper_resource():
 
 # Shared with SurroundPanner_Live.lua, which uses reaper.GetResourcePath()/tkSurroundPanner
 IPC_DIR = os.path.join(_reaper_resource(), "tkSurroundPanner")
-CMDS = SESSION = ROOM = LEVELS = BAKE = ""
+CMDS = SESSION = ROOM = LEVELS = BAKE = AUTOMATION = ""
 def _set_paths():
-    global CMDS, SESSION, ROOM, LEVELS, BAKE
+    global CMDS, SESSION, ROOM, LEVELS, BAKE, AUTOMATION
     CMDS = os.path.join(IPC_DIR, "cmds.json")
     SESSION = os.path.join(IPC_DIR, "session.json")
     ROOM = os.path.join(IPC_DIR, "room.json")
     LEVELS = os.path.join(IPC_DIR, "levels.json")
     BAKE = os.path.join(IPC_DIR, "bake.json")
+    AUTOMATION = os.path.join(IPC_DIR, "automation.json")
 _set_paths()
 
 ADDR_RE = re.compile(r"^/track/(\d+)/fx/(\d+)/fxparam/(\d+)/value$")
@@ -109,9 +110,28 @@ class BakeBox:
         os.replace(tmp, BAKE)
 
 
+class AutomationBox:
+    """Writes automation.json — arm/disarm REAPER latch recording of object moves on given tracks."""
+    def __init__(self):
+        self.seq = 0
+        self.lock = threading.Lock()
+
+    def write(self, mode, tracks):
+        mode = "rec" if mode == "rec" else "stop"
+        nums = ",".join(str(int(t)) for t in tracks)
+        with self.lock:
+            self.seq += 1
+            payload = '{"seq":%d,"mode":"%s","tracks":[%s]}' % (self.seq, mode, nums)
+        fd, tmp = tempfile.mkstemp(dir=IPC_DIR, suffix=".tmp")
+        with os.fdopen(fd, "w") as fh:
+            fh.write(payload)
+        os.replace(tmp, AUTOMATION)
+
+
 class Handler(BaseHTTPRequestHandler):
     mailbox = None
     bakebox = None
+    autobox = None
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -181,6 +201,10 @@ class Handler(BaseHTTPRequestHandler):
                 d = json.loads(raw)
                 self.bakebox.write(d.get("action", "bake"), d.get("items", []))
                 return self._send(200, b'{"ok":true}', "application/json")
+            if path == "/automation":                 # arm/disarm latch recording of moves
+                d = json.loads(raw)
+                self.autobox.write(d.get("mode", "stop"), d.get("tracks", []))
+                return self._send(200, b'{"ok":true}', "application/json")
             self._send(404, b"not found")
         except Exception as e:
             self._send(400, json.dumps({"ok": False, "error": str(e)}).encode())
@@ -200,6 +224,7 @@ def main():
     os.makedirs(IPC_DIR, exist_ok=True)
     Handler.mailbox = Mailbox()
     Handler.bakebox = BakeBox()
+    Handler.autobox = AutomationBox()
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
 
     print("=" * 64)
