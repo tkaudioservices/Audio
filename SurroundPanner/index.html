@@ -86,7 +86,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.13.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.16.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -119,6 +119,8 @@
           <div class="row"><label>Rate</label><input type="range" id="oFr" min="0" max="100" step="0.5"><span class="val" id="oFrv">3.3 s</span></div>
           <div class="row"><label>Depth</label><input type="range" id="oFd" min="0" max="1" step="0.01"><span class="val" id="oFdv">0.3</span></div>
           <div class="row"><label>Axis</label><select id="oFa" title="Oscillate axis"><option value="0">X · L/R</option><option value="1">Y · F/R</option><option value="2">Z · Height</option></select></div>
+          <div class="row"><label>Phase</label><input type="range" id="oFp" min="0" max="1" step="0.001" title="Offset where this object is in its cycle — stagger several for chasing / flocking motion"><span class="val" id="oFpv">0°</span></div>
+          <div class="mini"><button class="btn" id="oStagger" title="Spread the phase evenly across the selected objects, so they move in sequence">Stagger phases</button></div>
           <div class="mini"><button class="btn" id="oBake" title="Write the effect motion to X/Y/Z automation so a render runs offline at full speed">Bake → envelopes</button><button class="btn" id="oClearBake" title="Remove the baked automation and re-enable the live effect">Clear bake</button></div>
           <div class="hint" id="bakeHint">Bakes the selected object(s)' Orbit / Oscillate / Drift motion to X/Y/Z automation over the time selection (whole project if none) and turns the live effect off — so an <b>offline render runs at full speed</b>. Re‑bake overwrites; Clear removes the points and re‑enables the effect. (Spread isn't a position move, so it can't be baked.)</div>
           <div class="pill" id="bakeStatus" style="margin:2px 0 6px"></div>
@@ -242,7 +244,18 @@ const PRESETS = {
 };
 function loadPreset(name){
   const p = PRESETS[name]; if(!p) return;
-  state.speakers = p.map((s,i)=>({id:uid(), name:s[0], x:s[1], y:s[2], z:s[3], lfe:s[4]||0, ch:i+1, cw:0, cd:0, ca:0, cbw:90, type:0}));
+  // Give each speaker a sensible mount type + coverage so the preset reads on the diagram:
+  // LFE -> sub (no shape); height/top (z>0.5) -> ceiling ellipse; bed/surround -> wall wedge aimed
+  // at the centre. (Generous throw / wide beam keeps the panning gentle, close to plain DBAP.)
+  state.speakers = p.map((s,i)=>{
+    const x=s[1], y=s[2], z=s[3], lfe=s[4]||0;
+    let type=0, cw=0, cd=0, ca=0, cbw=90;
+    if(lfe){ type=2; }
+    else if(z>0.5){ type=0; cw=0.5; cd=0.5; }                                  // top -> ceiling circle
+    else { type=1; ca=Math.round(Math.atan2(-y,-x)*180/Math.PI);               // bed -> wall aimed at centre
+           cw=+(Math.hypot(x,y)+0.7).toFixed(2); cbw=100; }
+    return {id:uid(), name:s[0], x, y, z, lfe, ch:i+1, cw, cd, ca, cbw, type};
+  });
   state.selSpk = null;
   renderAll(); pushRoom();
 }
@@ -281,7 +294,7 @@ function coverageWeight(s, ox, oy){
     const e=Math.max(Math.abs(da)/hw, r/thr);                    // 1 at the cone's angular OR radial edge
     return e<=1 ? 1 : Math.max(0.001, Math.exp(-((e-1)**2)*4));
   }
-  const cw=s.cw||0, cd=s.cd||0; if(!(cw>0 && cd>0)) return 1;     // ceiling/sub: ellipse footprint
+  let cw=s.cw||0, cd=s.cd||0; if(!(cw>0 || cd>0)) return 1; cw=cw||cd; cd=cd||cw;   // ceiling/sub: ellipse (one value => circle)
   const ca=(s.ca||0)*Math.PI/180, cs=Math.cos(ca), sn=Math.sin(ca);
   const dx=ox-s.x, dy=oy-s.y, lx=dx*cs+dy*sn, ly=-dx*sn+dy*cs;
   const e=Math.sqrt((lx/cw)**2+(ly/cd)**2);
@@ -305,7 +318,7 @@ function computeGains(obj){
 // Orbit/Oscillate are phase-exact; Drift is an approximation (the plug-in's is random).
 function effPos(o){
   if(!o.effect || state.fxPaused) return {x:o.x,y:o.y,z:o.z};   // paused => sit at the base position
-  const t=performance.now()/1000, ph=2*Math.PI*(o.rate||0)*t, d=o.depth||0;
+  const t=performance.now()/1000, ph=2*Math.PI*((o.rate||0)*t + (o.phase||0)), d=o.depth||0;  // phase: per-object offset
   let x=o.x,y=o.y,z=o.z;
   if(o.effect===1){ x=o.x+d*Math.cos(ph); y=o.y+d*Math.sin(ph); }                       // orbit
   else if(o.effect===2){ const s=d*Math.sin(ph); o.axis===0?x+=s:o.axis===1?y+=s:z+=s; } // oscillate
@@ -360,12 +373,14 @@ function drawSpeaker(ctx,sx,sy,name,sel){
 }
 // speaker coverage footprints (top view) — only drawn in Edit-room mode, so the planner stays clean.
 // Ceiling/sub draw an ellipse; wall draws a wedge/cone (beam width + throw) along its angle.
+// Coverage has its own colour family (distinct from the blue object latch lines): ceiling = green,
+// wall = amber, sub = violet — so mount type reads at a glance.
+const COV_RGB={0:'126,231,135', 1:'240,136,62', 2:'210,168,255'};
 function drawCoverage(ctx,w,h){
   if(state.mode!=='room') return;                          // hidden while panning objects
   const sxS=(w-2*PAD)/2, syS=(h-2*PAD)/2;
-  state.speakers.forEach(s=>{ const sel=s.id===state.selSpk;
-    const fill = sel?'rgba(57,192,237,0.16)':'rgba(57,192,237,0.05)';
-    const stroke = sel?'rgba(57,192,237,0.9)':'rgba(57,192,237,0.28)', lw = sel?1.5:1;
+  state.speakers.forEach(s=>{ const sel=s.id===state.selSpk, rgb=COV_RGB[s.type||0]||COV_RGB[0];
+    const fill=`rgba(${rgb},${sel?0.20:0.07})`, stroke=`rgba(${rgb},${sel?0.95:0.42})`, lw=sel?1.6:1;
     if((s.type||0)===1){                                   // wall: wedge/cone
       const thr=s.cw||0; if(!(thr>0)) return;
       const ca=(s.ca||0)*Math.PI/180, hw=Math.max(1,(s.cbw||90))*0.5*Math.PI/180, N=18;
@@ -376,7 +391,7 @@ function drawCoverage(ctx,w,h){
       ctx.fillStyle=fill; ctx.fill(); ctx.strokeStyle=stroke; ctx.lineWidth=lw; ctx.stroke();
       return;
     }
-    const cw=s.cw||0, cd=s.cd||0; if(!(cw>0&&cd>0)) return; // ceiling/sub: ellipse
+    let cw=s.cw||0, cd=s.cd||0; if(!(cw>0||cd>0)) return; cw=cw||cd; cd=cd||cw;  // ceiling/sub: ellipse (one value => circle)
     const [cx,cy]=topXY(s.x,s.y,w,h);
     ctx.save(); ctx.translate(cx,cy); ctx.rotate(-(s.ca||0)*Math.PI/180);   // screen Y is flipped vs world
     ctx.beginPath(); ctx.ellipse(0,0,Math.max(1,cw*sxS),Math.max(1,cd*syS),0,0,Math.PI*2);
@@ -500,7 +515,7 @@ async function sendObject(o, axes){
 // effects engine params (tags 11-14) — sent together whenever an effect control changes
 async function sendFx(o){ if(!o.osc) return; const m=o.osc;
   const mk=(p,v)=>({addr:`/track/${m.track}/fx/${m.fx}/fxparam/${p}/value`, value:v});
-  await postOSC([mk(m.pe,o.effect||0),mk(m.pr,o.rate||0),mk(m.pd,o.depth||0),mk(m.pa,o.axis||0)]);
+  await postOSC([mk(m.pe,o.effect||0),mk(m.pr,o.rate||0),mk(m.pd,o.depth||0),mk(m.pa,o.axis||0),mk(m.pph,o.phase||0)]);
   const h=$('hdrSent'); if(h) h.textContent=`fx → ${o.name||'obj'}: ${['off','orbit','oscillate','spread','drift'][o.effect||0]}`;
   updateFxAnim();
 }
@@ -518,7 +533,8 @@ async function pollState(){ if(!state.bridge.connected) return;   // 'Follow' �
   if(!d.objects) return;
   const byTrack={}; d.objects.forEach(s=>{ if(s.osc) byTrack[s.osc.track]=s; });
   let changed=false;
-  state.objects.forEach(o=>{ if(o.id===activeDragId) return; const s=byTrack[o.osc.track]; if(!s) return;
+  state.objects.forEach(o=>{ if(o.id===activeDragId) return; if(o.effect>0) return;   // skip fx objects: their sliders carry the live motion, not the base
+    const s=byTrack[o.osc.track]; if(!s) return;
     if(typeof s.x==='number' && Math.abs(s.x-o.x)>1e-4){ o.x=s.x; changed=true; }
     if(typeof s.y==='number' && Math.abs(s.y-o.y)>1e-4){ o.y=s.y; changed=true; }
     if(typeof s.z==='number' && Math.abs(s.z-o.z)>1e-4){ o.z=s.z; changed=true; } });
@@ -560,6 +576,7 @@ function syncObjEditor(){
   const rate=o.rate==null?0.3:o.rate, depth=o.depth==null?0.3:o.depth;
   $('oFx').value=o.effect||0; $('oFr').value=rateToPct(rate); $('oFrv').textContent=rateLabel(rate);
   $('oFd').value=depth; $('oFdv').textContent=xyToM(depth); $('oFa').value=o.axis||0;
+  $('oFp').value=o.phase||0; $('oFpv').textContent=Math.round((o.phase||0)*360)+'°';
   const n=state.selObjs.length; const fs=$('fxScope'); if(fs) fs.innerHTML = n>1 ? `<b style="color:var(--accent)">Applying to ${n} objects.</b> ` : '';
   const bs=$('bakeStatus'); if(bs){ const baked=curSet().filter(o=>o.baked); const me=o.baked;
     bs.innerHTML = me ? `<span style="color:var(--accent2)">✓ baked: ${FXNAME[me.effect]||'fx'} → automation · live effect off</span>`
@@ -633,6 +650,12 @@ $('oFx').onchange=e=>{ const v=parseInt(e.target.value,10); applyFxToSel(o=>o.ef
 $('oFa').onchange=e=>{ const v=parseInt(e.target.value,10); applyFxToSel(o=>o.axis=v); };
 $('oFr').oninput=e=>{ const r=pctToRate(parseFloat(e.target.value)); $('oFrv').textContent=rateLabel(r); applyFxToSel(o=>o.rate=r); };
 $('oFd').oninput=e=>{ const d=parseFloat(e.target.value); $('oFdv').textContent=xyToM(d); applyFxToSel(o=>o.depth=d); };
+$('oFp').oninput=e=>{ const p=parseFloat(e.target.value); $('oFpv').textContent=Math.round(p*360)+'°'; applyFxToSel(o=>o.phase=p); };
+// Stagger: spread the phase evenly across the selection (object i -> i/N of a cycle), so a group of
+// same-effect objects chase/flock instead of moving in lockstep. One-click complex movement.
+$('oStagger').onclick=()=>{ const list=curSet(); if(list.length<2){ alert('Select several objects first (Ctrl/⌘ or Shift‑click the list).'); return; }
+  list.forEach((o,i)=>{ o.phase=+(i/list.length).toFixed(3); sendFx(o); }); syncObjEditor(); render();
+  const h=$('hdrSent'); if(h) h.textContent='staggered phase across '+list.length+' objects'; };
 function cur(){ return state.objects.find(x=>x.id===state.selObj); }
 
 $('oTest').onclick=testSweep;
@@ -641,24 +664,26 @@ $('oTest').onclick=testSweep;
 // write each object's effect motion to X/Y/Z automation and turn the live effect off, so an offline
 // render reads the envelopes at full speed. Clear removes the points and re-enables the live effect.
 const FXNAME=['off','orbit','oscillate','spread','drift'];
-async function postBake(action,tracks){
-  try{ const r=await fetch(state.bridge.url+'/bake',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,tracks})}); setConn(r.ok); return r.ok; }
+// items carry the object's BASE x/y/z so the Live script bakes around the true centre even if the
+// effect is mid-motion (the plug-in's X/Y/Z sliders hold the live position while an effect runs).
+async function postBake(action,items){
+  try{ const r=await fetch(state.bridge.url+'/bake',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,items})}); setConn(r.ok); return r.ok; }
   catch(e){ setConn(false); return false; }
 }
 async function bakeFx(clear){
   const set=curSet(), list=(set.length?set:[cur()].filter(Boolean)).filter(o=>o.osc);
   const h=$('hdrSent');
   if(!list.length){ alert('Select an object first.'); return; }
-  if(bridgeVersion<5){ alert('The running bridge is out of date — quit it and relaunch to use Bake.'); return; }
+  if(bridgeVersion<6){ alert("The running bridge is out of date — quit it and relaunch to use Bake."); return; }
   if(!clear){
     const bakeable=list.filter(o=>o.effect>0 && o.effect!==3);
     if(!bakeable.length){ alert('None of the selected objects has a bakeable effect (Orbit / Oscillate / Drift). Spread isn’t a position move.'); return; }
-    const ok=await postBake('bake', bakeable.map(o=>o.osc.track));
+    const ok=await postBake('bake', bakeable.map(o=>({t:o.osc.track, x:o.x, y:o.y, z:o.z})));
     if(ok){ bakeable.forEach(o=>{ o.baked={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis}; o.effect=0; });
       if(h) h.textContent='baked '+bakeable.length+' object(s) → X/Y/Z envelopes (render-ready)'; }
     else if(h) h.textContent='bake failed — is the bridge + Live script running?';
   } else {
-    const ok=await postBake('clear', list.map(o=>o.osc.track));
+    const ok=await postBake('clear', list.map(o=>({t:o.osc.track})));
     if(ok){ list.forEach(o=>{ if(o.baked){ o.effect=o.baked.effect; o.rate=o.baked.rate; o.depth=o.baked.depth; o.axis=o.baked.axis; o.baked=null; sendFx(o); } });
       if(h) h.textContent='cleared bake on '+list.length+' object(s)'; }
     else if(h) h.textContent='clear failed — is the bridge running?';
@@ -774,9 +799,10 @@ function applyImport(d){
   if(d.room) state.room=d.room;
   if(d.speakers) state.speakers=d.speakers;
   // the UI owns the effect settings (the session doesn't carry them) — keep them across a reload
-  const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis,baked:o.baked}; });
+  const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis,phase:o.phase,baked:o.baked,x:o.x,y:o.y,z:o.z}; });
   if(d.objects) state.objects=d.objects;
-  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; if(pf.baked) o.baked=pf.baked; } });
+  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; if(o.phase==null)o.phase=pf.phase; if(pf.baked) o.baked=pf.baked;
+    if(pf.effect>0){ o.x=pf.x; o.y=pf.y; o.z=pf.z; } } });   // keep the base for fx objects (their reported X/Y/Z is the live motion)
   state.panner=Object.assign(state.panner,d.panner||{});
   const n=state.objects.length||1;
   state.objects.forEach((o,i)=>{
@@ -790,10 +816,12 @@ function applyImport(d){
     if(typeof o.rate!=='number') o.rate=0.3;
     if(typeof o.depth!=='number') o.depth=0.3;
     if(typeof o.axis!=='number') o.axis=0;
+    if(typeof o.phase!=='number') o.phase=0;
     if(!o.color) o.color=PALETTE[i%PALETTE.length];
-    if(!o.osc) o.osc={track:i+1,fx:1,px:4,py:5,pz:6,pg:7,pl:10,pe:11,pr:12,pd:13,pa:14};   // X/Y/Z/Gain/LFE + effect tags
+    if(!o.osc) o.osc={track:i+1,fx:1,px:4,py:5,pz:6,pg:7,pl:10,pe:11,pr:12,pd:13,pa:14,pph:15};   // X/Y/Z/Gain/LFE + effect tags
     if(o.osc.pl==null) o.osc.pl=10;                                  // older Live scripts omit these
     if(o.osc.pe==null){ o.osc.pe=11; o.osc.pr=12; o.osc.pd=13; o.osc.pa=14; }
+    if(o.osc.pph==null) o.osc.pph=15;
   });
   // Objects REAPER reports stacked at the exact default origin (never placed) get fanned onto
   // a ring so each is individually grabbable. Objects with a real placement — including

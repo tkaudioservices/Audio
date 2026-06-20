@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tkSurroundPanner bridge — tk Audio Services  ·  app v0.13.0
+tkSurroundPanner bridge — tk Audio Services  ·  app v0.16.0
 =========================================================
 
 Connects the web UI to the SurroundPanner_Live.lua script running inside REAPER,
@@ -29,7 +29,7 @@ import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = 5
+VERSION = 6
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_ROOT = os.path.dirname(HERE)
 
@@ -88,17 +88,21 @@ class Mailbox:
 
 
 class BakeBox:
-    """Writes bake.json with an incrementing seq so the Lua picks up each new bake/clear once."""
+    """Writes bake.json with an incrementing seq so the Lua picks up each new bake/clear once.
+    Each item is {t, x, y, z}: track number + the object's base position to bake around."""
     def __init__(self):
         self.seq = 0
         self.lock = threading.Lock()
 
-    def write(self, action, tracks):
+    def write(self, action, items):
         action = "clear" if action == "clear" else "bake"
-        nums = ",".join(str(int(t)) for t in tracks)
+        parts = []
+        for it in items:
+            parts.append('{"t":%d,"x":%.4f,"y":%.4f,"z":%.4f}' % (
+                int(it.get("t", 0)), float(it.get("x", 0)), float(it.get("y", 0)), float(it.get("z", 0))))
         with self.lock:
             self.seq += 1
-            payload = '{"seq":%d,"action":"%s","tracks":[%s]}' % (self.seq, action, nums)
+            payload = '{"seq":%d,"action":"%s","items":[%s]}' % (self.seq, action, ",".join(parts))
         fd, tmp = tempfile.mkstemp(dir=IPC_DIR, suffix=".tmp")
         with os.fdopen(fd, "w") as fh:
             fh.write(payload)
@@ -175,7 +179,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, b'{"ok":true}', "application/json")
             if path == "/bake":                       # bake / clear FX -> envelopes
                 d = json.loads(raw)
-                self.bakebox.write(d.get("action", "bake"), d.get("tracks", []))
+                self.bakebox.write(d.get("action", "bake"), d.get("items", []))
                 return self._send(200, b'{"ok":true}', "application/json")
             self._send(404, b"not found")
         except Exception as e:

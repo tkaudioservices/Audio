@@ -27,6 +27,7 @@ and **[CHANGELOG.md](CHANGELOG.md)** for what changed when.
 | `index.html` | The control surface. Open it in any browser — it works standalone for design even with no REAPER or bridge running. |
 | `engine/tk_SurroundPanner.jsfx` | **The panner.** A DBAP object panner (2 in → up to 16 out) whose sliders we drive directly, so external control is reliable. It reads the speaker layout live from REAPER shared memory, has a per‑object LFE send, and shows a compact value readout. Installed into REAPER's `Effects/tk`. |
 | `engine/tk_SurroundNoise.jsfx` | **Rig‑setup noise.** A pink‑noise generator for your immersive bus. The UI's *Speaker check* drives it to send noise to one speaker (or all), so you can line up, level‑match and verify the real rig. Publishes into the same meters as the panner. Installed alongside the panner. |
+| `engine/tk_SurroundMonitor.jsfx` | **Rehearsal / headphone fold.** Put on a stereo monitor track fed by the immersive bus; folds all speaker channels to stereo by each speaker's angle (read from the same shared layout). Two modes — **Stereo fold** (amplitude) and **Binaural** (parametric ITD + head‑shadow) — for working without the rig. Leaves the real speaker bus untouched. |
 | `engine/SurroundPanner_Live.lua` | **The live link.** Run once inside REAPER and leave it running. It drives every `tk SurroundPanner` instance from the UI, pushes the room layout into shared memory, auto‑grows track/bus channel counts, and publishes the scene + meters back to the UI. |
 | `bridge/reaper_bridge.py` | Tiny stdlib HTTP bridge. Serves the UI and shuttles small JSON files between the browser and the Live script. No OSC, no extensions. |
 | `Install tkSurroundPanner.command` / `.bat` | Double‑click installer — copies the JSFX into REAPER's `Effects/tk`. Run once, and again after an update. |
@@ -124,8 +125,12 @@ object live along its path and draws the effect's extent, and the latch lines + 
 an approximation, since the plug‑in's drift is randomised.)
 
 **Select several objects** (Ctrl/⌘‑click and Shift‑click in the Objects list) and the effect
-controls apply to the whole selection, so you can shape a group together. **Pause FX** (top bar)
-freezes every effect at its base position — in the preview *and* the plug‑in — and resumes exactly.
+controls apply to the whole selection, so you can shape a group together. Each effect also has a
+**Phase** offset, and **Stagger phases** spreads it evenly across the selection so a group moves in
+sequence (chase / flock) rather than in lockstep — one click for complex motion. **Pause FX** (top
+bar) freezes every effect at its base position — in the preview *and* the plug‑in — and resumes
+exactly. The plug‑in itself shows a live mini top‑view + `now x/y/z` readout, so you can watch the
+movement there too while playing.
 
 **Bake → envelopes.** Bake writes the selected object(s)' Orbit/Oscillate/Drift motion to X/Y/Z
 **FX‑parameter automation** over the time selection (whole project if none) and turns the live
@@ -242,6 +247,7 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 | 12 | FX rate (Hz, `0…5`) | 8 | per object |
 | 13 | FX depth (`0…1`) | 9 | per object |
 | 14 | FX axis (`0…2`: X/Y/Z) | 10 | per object |
+| 15 | FX phase (`0…1` cycle offset) | 11 | per object |
 
 **Shared memory** (`gmem` namespace `tkSurroundPanner`):
 
@@ -281,8 +287,9 @@ Endpoints: `GET /ping`, `/session`, `/levels`, static files; `POST /set` (object
 - [x] **Save / reuse layouts** — export/import the room + speaker rig as a JSON file.
 - [x] Position **automation (bake)** — bake an object's effect motion to X/Y/Z FX‑parameter
       envelopes so an offline render runs at full speed; read/edit/overwrite or clear them.
-- [ ] **Binaural mixdown** — a headphone render path for offline work: an HRTF convolver
-      in the JSFX for monitoring, and an offline renderer for deliverables.
+- [x] **Stereo / binaural monitor** — `tk SurroundMonitor` folds the speaker bus to stereo for
+      rehearsal/headphones: amplitude **Stereo fold** and a **parametric binaural** (ITD +
+      head‑shadow) by speaker angle. (Future: measured HRIR/SOFA convolution; elevation cues.)
 - [ ] **Radial / spherical** room view (L‑ISA / KLANG style) alongside the X‑Y / X‑Z views.
 
 ---

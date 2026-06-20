@@ -3,6 +3,23 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.16.0
+- **New plug-in: `tk SurroundMonitor` — rehearsal / headphone fold-down.** Put it on a stereo monitor track fed by your immersive bus and it folds all the speaker channels to stereo, so you can work without the full rig. It reads the **same gmem speaker layout** as the panner, so every channel is folded by its speaker's real angle.
+  - **Stereo fold** — constant-power amplitude fold by each speaker's azimuth (mild rear attenuation, C at −3 dB, optional LFE fold). Light and robust; the rehearsal downmix.
+  - **Binaural** — parametric HRTF per channel: ITD (inter-aural delay) + head-shadow (ILD low-pass) from the speaker azimuth. Static per layout, so it renders at full speed too. (A measured HRIR/SOFA path is a future upgrade; this covers the dominant cues.)
+  - Controls: Mode, Output (dB), Width %, LFE drop/fold. Leaves the real speaker bus untouched (parallel monitor path). Added to both installers.
+
+## v0.15.0
+- **The plug-in's X/Y/Z faders now move with the effect.** While an Orbit/Oscillate/Drift effect runs, the panner writes the live position back to its X/Y/Z sliders, so the faders animate in the plug-in (not just the web view). The **base** position is kept safe internally (`bx/by/bz`, captured from host/UI moves and persisted via `@serialize`), so an effect overwriting the sliders never loses your set position — dragging the object during an effect still re-bases it, and a project saved mid-effect restores correctly.
+- Under the hood this needed care so it doesn't fight the rest of the system: **Bake** now receives each object's base position from the UI (the sliders hold the live motion while an effect runs), and **Follow** no longer mirrors an fx object's live slider back as its base. Bridge protocol → 6 (bake payload carries base x/y/z).
+
+## v0.14.0
+- **The plug-in now shows the movement.** The `tk SurroundPanner` UI has a live **mini top-view** (speakers + a moving object dot) and a **`now x/y/z`** readout that track the effect-modulated position while playing — so you can see an effect working in the plug-in, not just the browser.
+- **Phase offset + Stagger (complex group movement).** Each object effect has a **Phase** control (cycle offset), and with several objects selected, **Stagger phases** spreads the phase evenly across them — so a group orbits/oscillates in sequence (chase / flock) instead of in lockstep. One click → complex motion. Phase is baked too. New FX param tag 15 / JSFX `slider12`.
+- **Classic presets now look right on the diagram.** Stereo / 5.1 / 7.1 / 7.1.4 get sensible mount types + coverage: bed/surround speakers become **wall wedges aimed at the centre**, height speakers become **ceiling footprints**, LFE becomes a **sub** — so the coverage drawing is meaningful the moment you pick a preset. (Throw/beam are generous, so the panning stays close to plain DBAP.)
+- **Ceiling coverage with a single value now draws.** Setting only Cover W (or only Cover D) on a ceiling/sub speaker makes a **circle** instead of drawing nothing — fixes ceiling footprints appearing blank.
+- **Coverage has its own colours.** Footprints/cones are now coloured by mount type (ceiling = green, wall = amber, sub = violet), distinct from the blue object latch lines.
+
 ## v0.13.0
 - **Bake FX → envelopes.** Bake the selected object(s)' Orbit / Oscillate / Drift motion to X/Y/Z **FX‑parameter automation** over the time selection (whole project if none), then turn the live effect off — so an **offline render runs at full speed** instead of realtime through the plug‑in. The baked envelopes are normal REAPER automation: read and edit them on the track, **re‑bake to overwrite**, or **Clear bake** to remove the points and re‑enable the live effect. Operates on the multi‑selection. (Spread isn't a position move, so it can't be baked.) New bridge endpoint `POST /bake` and `bake.json` IPC; bridge protocol → 5.
 - The bake math mirrors the JSFX effect exactly (Orbit/Oscillate phase‑exact; Drift is a deterministic smoothed random walk matching the live character), normalised into each slider's range.
