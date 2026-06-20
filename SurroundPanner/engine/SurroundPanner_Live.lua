@@ -1,5 +1,5 @@
 --[[
-  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.21.0
+  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.22.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -169,6 +169,7 @@ local function bakeTrack(inst, bx, by, bz)
   local envX = reaper.GetFXEnvelope(tr, fx, 0, true)
   local envY = reaper.GetFXEnvelope(tr, fx, 1, true)
   local envZ = reaper.GetFXEnvelope(tr, fx, 2, true)
+  local scX, scY, scZ = reaper.GetEnvelopeScalingMode(envX), reaper.GetEnvelopeScalingMode(envY), reaper.GetEnvelopeScalingMode(envZ)
   reaper.DeleteEnvelopePointRange(envX, t0 - 1e-9, t1 + 1e-9)        -- overwrite any previous bake in range
   reaper.DeleteEnvelopePointRange(envY, t0 - 1e-9, t1 + 1e-9)
   reaper.DeleteEnvelopePointRange(envZ, t0 - 1e-9, t1 + 1e-9)
@@ -195,9 +196,10 @@ local function bakeTrack(inst, bx, by, bz)
     ey = ey < -1 and -1 or (ey > 1 and 1 or ey)
     ez = ez < 0 and 0 or (ez > 1 and 1 or ez)
     local t = t0 + rt
-    reaper.InsertEnvelopePoint(envX, t, normParam(tr, fx, 0, ex), 0, 0, false, true)
-    reaper.InsertEnvelopePoint(envY, t, normParam(tr, fx, 1, ey), 0, 0, false, true)
-    reaper.InsertEnvelopePoint(envZ, t, normParam(tr, fx, 2, ez), 0, 0, false, true)
+    -- ScaleToEnvelopeMode keeps the value correct whether the FX envelope is linear or fader-scaled
+    reaper.InsertEnvelopePoint(envX, t, reaper.ScaleToEnvelopeMode(scX, normParam(tr, fx, 0, ex)), 0, 0, false, true)
+    reaper.InsertEnvelopePoint(envY, t, reaper.ScaleToEnvelopeMode(scY, normParam(tr, fx, 1, ey)), 0, 0, false, true)
+    reaper.InsertEnvelopePoint(envZ, t, reaper.ScaleToEnvelopeMode(scZ, normParam(tr, fx, 2, ez)), 0, 0, false, true)
     k = k + 1
   end
   reaper.Envelope_SortPoints(envX); reaper.Envelope_SortPoints(envY); reaper.Envelope_SortPoints(envZ)
@@ -205,13 +207,16 @@ local function bakeTrack(inst, bx, by, bz)
   return true
 end
 
--- remove a baked move: clear all points on the X/Y/Z envelopes (the UI re-enables the effect)
+-- remove a baked move: clear the X/Y/Z envelope points in the time selection (or all, if none).
+-- The UI re-enables the live effect afterwards.
 local function clearBake(inst)
   local tr, fx = inst.tr, inst.fx
-  local hi = reaper.GetProjectLength(0) + 1e6
+  local t0, t1 = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
+  local lo, hi
+  if t1 > t0 then lo, hi = t0, t1 else lo, hi = -1e6, reaper.GetProjectLength(0) + 1e6 end
   for p = 0, 2 do
     local env = reaper.GetFXEnvelope(tr, fx, p, false)
-    if env then reaper.DeleteEnvelopePointRange(env, -1e6, hi); reaper.Envelope_SortPoints(env) end
+    if env then reaper.DeleteEnvelopePointRange(env, lo, hi); reaper.Envelope_SortPoints(env) end
   end
 end
 

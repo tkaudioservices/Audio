@@ -10,6 +10,7 @@ its own release pipeline. Pick one below.
 
 | Project | What it does |
 |---|---|
+| [SurroundPanner](SurroundPanner/) | A browser **control surface for immersive, object‑based mixing in REAPER**. Your tracks become objects you drag around a room; a small ReaScript drives a custom **tk SurroundPanner** JSFX so moves apply live and render to file. DBAP panning, real speaker layouts (directional walls + ceiling zones), per‑object motion effects you can **bake to automation**, **cue snapshots**, a **stereo/binaural rehearsal fold**, depth cue and a radial view. A lightweight open take on the L‑ISA / KLANG workflow — talking to a session you already own. Standard‑library Python bridge, single JSFX, no build step. See its [README](SurroundPanner/) to get started. |
 | [Galileo Loader](Galileo%20Loader/) | Reads a WaveCapture / FIR‑Capture biquad export and sends the parametric EQ to a **Meyer Sound Galileo** as OSC over UDP. A small, cross‑platform replacement for the 2015 MaxMSP *TXTtoG616* standalone — one Python file, no install. Bundled UI, network discovery and a Windows .exe via GitHub Actions. |
 
 ## Downloads
