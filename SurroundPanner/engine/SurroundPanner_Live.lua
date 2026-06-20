@@ -1,5 +1,5 @@
 --[[
-  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.13.0
+  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.14.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -121,6 +121,7 @@ local function applyCmds(insts)
       elseif pp == 12 then slider = 8; sval = val           -- FX rate (Hz)            per object
       elseif pp == 13 then slider = 9; sval = val           -- FX depth (0..1)         per object
       elseif pp == 14 then slider = 10; sval = val          -- FX axis (0..2)          per object
+      elseif pp == 15 then slider = 11; sval = val          -- FX phase (0..1)         per object
       end
       if slider then setparam(inst.tr, inst.fx, slider, sval) end
     end
@@ -153,6 +154,7 @@ local function bakeTrack(inst)
   local rate  = reaper.TrackFX_GetParam(tr, fx, 8)
   local depth = reaper.TrackFX_GetParam(tr, fx, 9)
   local ax    = math.floor(reaper.TrackFX_GetParam(tr, fx, 10) + 0.5)
+  local phase = reaper.TrackFX_GetParam(tr, fx, 11)                 -- per-object cycle offset
   local bx, by, bz = reaper.TrackFX_GetParam(tr, fx, 0), reaper.TrackFX_GetParam(tr, fx, 1), reaper.TrackFX_GetParam(tr, fx, 2)
   local t0, t1 = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
   if t1 <= t0 then t0 = 0; t1 = reaper.GetProjectLength(0) end
@@ -173,7 +175,7 @@ local function bakeTrack(inst)
   local k = 0
   while k <= nsteps do
     local rt = k * dt                       -- phase time, relative to the range start
-    local ph = 2 * math.pi * rate * rt
+    local ph = 2 * math.pi * (rate * rt + phase)
     local ex, ey, ez = bx, by, bz
     if ft == 1 then                         -- Orbit
       ex = bx + depth * math.cos(ph); ey = by + depth * math.sin(ph)
@@ -241,11 +243,11 @@ local function buildSession()
       local z = reaper.TrackFX_GetParam(tr, fx, 2)
       local nch = math.floor(reaper.GetMediaTrackInfo_Value(tr, "I_NCHAN"))
       objs[#objs + 1] = string.format(
-        '{%s:%s,%s:%s,%s:%s,%s:%.4f,%s:%.4f,%s:%.4f,%s:{%s:%d,%s:%d,%s:4,%s:5,%s:6,%s:7,%s:10,%s:11,%s:12,%s:13,%s:14}}',
+        '{%s:%s,%s:%s,%s:%s,%s:%.4f,%s:%.4f,%s:%.4f,%s:{%s:%d,%s:%d,%s:4,%s:5,%s:6,%s:7,%s:10,%s:11,%s:12,%s:13,%s:14,%s:15}}',
         jstr("name"), jstr(track_name(tr)), jstr("color"), jstr(track_color(tr)), jstr("group"), jstr(group),
         jstr("x"), x, jstr("y"), y, jstr("z"), z,
         jstr("osc"), jstr("track"), oscT, jstr("fx"), fx + 1, jstr("px"), jstr("py"), jstr("pz"), jstr("pg"), jstr("pl"),
-        jstr("pe"), jstr("pr"), jstr("pd"), jstr("pa"))
+        jstr("pe"), jstr("pr"), jstr("pd"), jstr("pa"), jstr("pph"))
       tracks[#tracks + 1] = string.format('{%s:%d,%s:%s,%s:%d}',
         jstr("track"), oscT, jstr("name"), jstr(track_name(tr)), jstr("nch"), nch)
     end

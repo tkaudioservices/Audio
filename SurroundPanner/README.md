@@ -124,8 +124,12 @@ object live along its path and draws the effect's extent, and the latch lines + 
 an approximation, since the plug‑in's drift is randomised.)
 
 **Select several objects** (Ctrl/⌘‑click and Shift‑click in the Objects list) and the effect
-controls apply to the whole selection, so you can shape a group together. **Pause FX** (top bar)
-freezes every effect at its base position — in the preview *and* the plug‑in — and resumes exactly.
+controls apply to the whole selection, so you can shape a group together. Each effect also has a
+**Phase** offset, and **Stagger phases** spreads it evenly across the selection so a group moves in
+sequence (chase / flock) rather than in lockstep — one click for complex motion. **Pause FX** (top
+bar) freezes every effect at its base position — in the preview *and* the plug‑in — and resumes
+exactly. The plug‑in itself shows a live mini top‑view + `now x/y/z` readout, so you can watch the
+movement there too while playing.
 
 **Bake → envelopes.** Bake writes the selected object(s)' Orbit/Oscillate/Drift motion to X/Y/Z
 **FX‑parameter automation** over the time selection (whole project if none) and turns the live
@@ -242,6 +246,7 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 | 12 | FX rate (Hz, `0…5`) | 8 | per object |
 | 13 | FX depth (`0…1`) | 9 | per object |
 | 14 | FX axis (`0…2`: X/Y/Z) | 10 | per object |
+| 15 | FX phase (`0…1` cycle offset) | 11 | per object |
 
 **Shared memory** (`gmem` namespace `tkSurroundPanner`):
 
