@@ -230,7 +230,8 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 | `room.json` | UI → REAPER | `{"speakers":[{"x","y","z","lfe","cw","cd","ca","bw","ty"}, …]}` — layout + coverage. Ceiling/sub: ellipse `cw`/`cd` half‑axes, `ca` angle°. Wall: wedge `cw` = throw, `bw` = beam width°, `ca` = aim°. `ty` = mount type (0 ceiling, 1 wall, 2 sub); 0 = off. |
 | `session.json` | REAPER → UI | Objects (name, colour, group, x/y/z, param tags) + track list. |
 | `levels.json` | REAPER → UI | `{"levels":[…]}` — per‑speaker peak, ~12×/sec. |
-| `bake.json` | UI → REAPER | `{"seq":N,"action":"bake"|"clear","tracks":[…]}` — bake the effect motion to X/Y/Z FX‑parameter envelopes over the time selection (or clear them). |
+| `bake.json` | UI → REAPER | `{"seq":N,"action":"bake"|"clear","items":[{t,x,y,z}…]}` — bake each object's effect motion (around base x/y/z) to X/Y/Z FX‑parameter envelopes over the time selection (or clear them). |
+| `automation.json` | UI → REAPER | `{"seq":N,"mode":"rec"|"stop","tracks":[…]}` — arm/disarm REAPER latch recording of object moves to X/Y/Z envelopes. |
 
 **Param tags** (the `p` in `cmds.json`) → JSFX slider:
 
@@ -261,7 +262,7 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 
 **Bridge** — `python3 bridge/reaper_bridge.py [--port 9000] [--host 127.0.0.1] [--ipc-dir DIR]`.
 Endpoints: `GET /ping`, `/session`, `/levels`, static files; `POST /set` (object moves),
-`/room` (layout), `/bake` (bake/clear effect → envelopes).
+`/room` (layout), `/bake` (bake/clear effect → envelopes), `/automation` (arm/disarm move recording).
 
 ---
 
@@ -293,6 +294,8 @@ Endpoints: `GET /ping`, `/session`, `/levels`, static files; `POST /set` (object
 - [x] **Cue snapshots** — capture / recall whole scenes (positions + gain + mute/solo + effects),
       with timed **morph** between cues; persisted + export/import.
 - [x] **Solo / mute** per object, reflected in the preview and the plug‑in.
+- [x] **Trajectory recording** — *Record moves* arms REAPER latch automation on the panner tracks,
+      so dragging objects while playing records to editable X/Y/Z envelopes (capture side of Bake).
 - [ ] **Radial / spherical** room view (L‑ISA / KLANG style) alongside the X‑Y / X‑Z views.
 
 ---

@@ -3,6 +3,10 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.18.0
+- **Trajectory recording.** A **● Record moves** toggle (Objects panel) arms REAPER's **latch automation** on the selected object(s) — or all — and arms their X/Y/Z envelopes. Press play in REAPER and drag objects, and the moves record straight to **editable automation** (then re‑bake/edit/clear like any bake). Turn it off and the tracks return to read. The live‑capture complement to Bake. New bridge endpoint `POST /automation` + `automation.json`; protocol → 7.
+- **Note:** this path is REAPER‑native (latch + envelope arming) and needs a REAPER test — see the caveat in the README.
+
 ## v0.17.0
 - **Cue snapshots.** A new *Cues* panel stores the whole scene — every object's position, gain, mute/solo and effect (keyed by REAPER track). **Capture** the current scene, click a cue to **recall** it, and with **Morph > 0** the objects glide to the cue over that time (eased). **U** updates a cue to the current scene. Cues persist in the browser and **Export/Import** to a file, so a show's looks move between machines. The big one for live/theatre.
 - **Per-object solo / mute.** **M** and **S** on each object in the list. Mute silences an object; Solo silences everything else. Drives both the preview (latch lines / meters drop out) and the plug-in (via each object's Gain), so it's audible. Captured in cues.

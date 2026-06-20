@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.17.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.18.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -127,6 +127,8 @@
           <div class="mini"><button class="btn" id="oBake" title="Write the effect motion to X/Y/Z automation so a render runs offline at full speed">Bake → envelopes</button><button class="btn" id="oClearBake" title="Remove the baked automation and re-enable the live effect">Clear bake</button></div>
           <div class="hint" id="bakeHint">Bakes the selected object(s)' Orbit / Oscillate / Drift motion to X/Y/Z automation over the time selection (whole project if none) and turns the live effect off — so an <b>offline render runs at full speed</b>. Re‑bake overwrites; Clear removes the points and re‑enables the effect. (Spread isn't a position move, so it can't be baked.)</div>
           <div class="pill" id="bakeStatus" style="margin:2px 0 6px"></div>
+          <div class="mini"><button class="btn toggle" id="oRec" title="Arm REAPER latch automation on the selected object(s); play and drag to record moves">● Record moves</button></div>
+          <div class="hint">Arms REAPER's <b>latch</b> automation on the selected object(s) (or all). Press <b>play</b> in REAPER and drag objects — the moves record to editable X/Y/Z automation. Turn off to stop (tracks return to read). The capture complement to Bake.</div>
           <div class="mini"><button class="btn" id="oTest">Test · sweep X</button></div>
           <div class="hint">Sweeps this object's X across the room so you can confirm the link — watch it move in REAPER. The track, FX and parameter mapping are filled in automatically by the Live script.</div>
         </div>
@@ -247,7 +249,7 @@ let state = {
   bridge:{url:"http://localhost:9000", connected:false, rate:30},
   tracks:[],
   selObj:null, selObjs:[], selSpk:null, mode:"objects", fxPaused:false,
-  cues:[], selCue:null
+  cues:[], selCue:null, recording:false
 };
 let activeDragId=null;   // object id being dragged — pollState won't overwrite it
 
@@ -716,6 +718,23 @@ async function bakeFx(clear){
 }
 $('oBake').onclick=()=>bakeFx(false);
 $('oClearBake').onclick=()=>bakeFx(true);
+
+// Trajectory recording — arm REAPER latch automation on the selected (or all) panner tracks, so
+// dragging objects while the transport rolls records the moves to editable X/Y/Z envelopes.
+async function postAutomation(mode,tracks){
+  try{ const r=await fetch(state.bridge.url+'/automation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,tracks})}); setConn(r.ok); return r.ok; }
+  catch(e){ setConn(false); return false; }
+}
+async function toggleRec(){
+  if(bridgeVersion<7){ alert('The running bridge is out of date — quit it and relaunch to record moves.'); return; }
+  const set=curSet(), list=(set.length?set:state.objects).filter(o=>o.osc);
+  if(!list.length){ alert('No objects to record.'); return; }
+  state.recording=!state.recording; $('oRec').classList.toggle('on', state.recording);
+  const ok=await postAutomation(state.recording?'rec':'stop', list.map(o=>o.osc.track));
+  const h=$('hdrSent'); if(h) h.textContent = !ok ? 'record failed — is the bridge + Live script running?'
+    : state.recording ? ('recording moves on '+list.length+' track(s) — press play in REAPER & drag') : 'recording stopped — tracks back to read';
+}
+$('oRec').onclick=toggleRec;
 $('addSpk').onclick=addSpeaker;
 
 // Save / export / import speaker layouts — room + speakers as a portable JSON file.

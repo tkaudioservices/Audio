@@ -1,5 +1,5 @@
 --[[
-  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.17.0
+  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.18.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -29,6 +29,7 @@ local SESS   = IPC .. "/session.json"
 local ROOM   = IPC .. "/room.json"
 local LEVELS = IPC .. "/levels.json"
 local BAKE   = IPC .. "/bake.json"
+local AUTO   = IPC .. "/automation.json"
 local MATCH = "surroundpanner"   -- matches "JS: tk SurroundPanner", not "ReaSurroundPan"
 local MB     = 1000              -- gmem meter base, matches the JSFX (gmem[MB+ch] = peak per output)
 local MAXSPK = 16                -- matches the JSFX MAXOUT
@@ -239,6 +240,39 @@ local function applyBake(insts)
   reaper.UpdateArrange()
 end
 
+-- trajectory recording: put each panner track into LATCH automation so dragging objects (which the
+-- Live script writes to X/Y/Z) records straight to editable envelopes; 'stop' returns to read.
+-- automation.json = {"seq":N,"mode":"rec"|"stop","tracks":[t,...]}
+local lastAutoSeq = -1
+local function envArm(env, on)
+  local ok, chunk = reaper.GetEnvelopeStateChunk(env, "", false)
+  if not ok then return end
+  if chunk:find("\nARM ") then chunk = chunk:gsub("\nARM %-?%d+", "\nARM " .. (on and 1 or 0))
+  else chunk = chunk:gsub("(\nACT %-?%d+)", "%1\nARM " .. (on and 1 or 0), 1) end
+  reaper.SetEnvelopeStateChunk(env, chunk, false)
+end
+local function recTrack(inst, on)
+  local tr, fx = inst.tr, inst.fx
+  for p = 0, 2 do                                    -- X/Y/Z FX-param envelopes
+    local env = reaper.GetFXEnvelope(tr, fx, p, true)
+    if env then envArm(env, on) end
+  end
+  reaper.SetTrackAutomationMode(tr, on and 4 or 1)   -- 4 = latch (record touched), 1 = read (play back)
+end
+local function applyAutomation(insts)
+  local s = readfile(AUTO); if not s then return end
+  local seq = tonumber(s:match('"seq":(%-?%d+)')); if not seq or seq == lastAutoSeq then return end
+  lastAutoSeq = seq
+  local mode  = s:match('"mode":"(%a+)"') or "stop"
+  local tlist = s:match('"tracks":%[([%d,%s]*)%]') or ""
+  reaper.PreventUIRefresh(1)
+  for n in tlist:gmatch('(%d+)') do
+    local inst = insts[tonumber(n)]
+    if inst then recTrack(inst, mode == "rec") end
+  end
+  reaper.PreventUIRefresh(-1); reaper.UpdateArrange()
+end
+
 -- publish session.json (positions read straight from the sliders) -
 local function buildSession()
   local objs, tracks, stack = {}, {}, {}
@@ -339,6 +373,7 @@ local function loop()
     local insts = instances()
     applyCmds(insts)
     applyBake(insts)
+    applyAutomation(insts)
     loadRoom()
     local now = reaper.time_precise()
     if now - lastLevels > 0.08 then lastLevels = now; writeLevels() end   -- ~12 Hz meters
