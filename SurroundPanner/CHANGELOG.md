@@ -3,6 +3,9 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.19.0
+- **Effect motion now syncs between the plug-in and the GUI.** They were two independent oscillators (the plug-in on the audio clock from when the effect was enabled, the browser on wall-clock from page load), so they drifted out of phase. Both now **reset their phase to 0 when the effect type changes**, sharing an anchor — so the plug-in's moving X/Y/Z faders and the web view line up for the slow design-rate effects that matter, and the motion cleanly restarts on an effect change. (Very fast rates may still show a small offset from the ~100 ms command latency; re-selecting the effect re-syncs.)
+
 ## v0.18.0
 - **Trajectory recording.** A **● Record moves** toggle (Objects panel) arms REAPER's **latch automation** on the selected object(s) — or all — and arms their X/Y/Z envelopes. Press play in REAPER and drag objects, and the moves record straight to **editable automation** (then re‑bake/edit/clear like any bake). Turn it off and the tracks return to read. The live‑capture complement to Bake. New bridge endpoint `POST /automation` + `automation.json`; protocol → 7.
 - **Note:** this path is REAPER‑native (latch + envelope arming) and needs a REAPER test — see the caveat in the README.
