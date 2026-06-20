@@ -3,6 +3,12 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.20.0
+- **Drag coverage on the diagram.** In *Edit room*, the selected speaker shows handles on its coverage: drag the tip of a **wall** wedge to set its throw + aim and a side handle to set the beam width; drag a **ceiling/sub** ellipse's handles to set width + angle and depth. No more typing numbers (the fields still work and update live).
+- **Coverage show/hide for fine-tuning.** A *Coverage* control in *Room & speakers* — **Draw all / Selected only / Hidden**. *Selected only* isolates one speaker's footprint so overlapping rigs are easy to fine-tune.
+- **Editable object names.** The Name field now renames the REAPER track (via the Live script); it no longer just highlights on click. New bridge endpoint `POST /rename` + `rename.json`; protocol → 8.
+- **Tidier UI.** Speaker editor regrouped into clear *Speaker* / *Coverage* sections with single-column rows and axis hints; metre values now show the unit on the same line; and long help text is collapsed behind an **ⓘ** in each section header (click to show).
+
 ## v0.19.0
 - **Effect motion now syncs between the plug-in and the GUI.** They were two independent oscillators (the plug-in on the audio clock from when the effect was enabled, the browser on wall-clock from page load), so they drifted out of phase. Both now **reset their phase to 0 when the effect type changes**, sharing an anchor — so the plug-in's moving X/Y/Z faders and the web view line up for the slow design-rate effects that matter, and the motion cleanly restarts on an effect change. (Very fast rates may still show a small offset from the ~100 ms command latency; re-selecting the effect re-syncs.)
 
