@@ -250,6 +250,7 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 | 13 | FX depth (`0…1`) | 9 | per object |
 | 14 | FX axis (`0…2`: X/Y/Z) | 10 | per object |
 | 15 | FX phase (`0…1` cycle offset) | 11 | per object |
+| 16 | Depth cue (`0…1`) | 12 | panner law (all objects) |
 
 **Shared memory** (`gmem` namespace `tkSurroundPanner`):
 

@@ -1,5 +1,5 @@
 --[[
-  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.20.0
+  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.21.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -124,6 +124,7 @@ local function applyCmds(insts)
       elseif pp == 13 then slider = 9; sval = val           -- FX depth (0..1)         per object
       elseif pp == 14 then slider = 10; sval = val          -- FX axis (0..2)          per object
       elseif pp == 15 then slider = 11; sval = val          -- FX phase (0..1)         per object
+      elseif pp == 16 then slider = 12; sval = val          -- Depth cue (0..1)        panner law (all objects)
       end
       if slider then setparam(inst.tr, inst.fx, slider, sval) end
     end

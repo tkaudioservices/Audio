@@ -3,6 +3,10 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.21.0
+- **Depth cue (near/far).** A new **Depth** amount in *Panner law*: objects further from the listener (room centre) get gently **duller (air absorption — a distance low‑pass) and quieter**, computed per object in the plug‑in from its live position. 0 = off. Distant objects also fade in the view, so the cue reads visually too. (New FX param tag 16 / JSFX `slider13`.)
+- **Radial view (L‑ISA / KLANG style).** A **Radial** toggle in the top bar switches the top view to a listener‑centred polar plot — distance rings + angle spokes, FRONT up, listener at the centre — alongside the existing Cartesian top and the front (height) view. Objects, speakers, coverage, handles and dragging all work the same in either mode (it's purely how the plane is drawn). The front X/Z view still handles elevation.
+
 ## v0.20.0
 - **Drag coverage on the diagram.** In *Edit room*, the selected speaker shows handles on its coverage: drag the tip of a **wall** wedge to set its throw + aim and a side handle to set the beam width; drag a **ceiling/sub** ellipse's handles to set width + angle and depth. No more typing numbers (the fields still work and update live).
 - **Coverage show/hide for fine-tuning.** A *Coverage* control in *Room & speakers* — **Draw all / Selected only / Hidden**. *Selected only* isolates one speaker's footprint so overlapping rigs are easy to fine-tune.

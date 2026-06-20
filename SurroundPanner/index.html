@@ -95,9 +95,10 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.20.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.21.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
+  <button class="btn toggle" id="viewRadial" title="Top view: Cartesian ⟷ Radial (listener‑centred, L‑ISA/KLANG style)">Radial</button>
   <span class="spacer"></span>
   <span class="lastsent" id="hdrSent" title="last command sent to REAPER">—</span>
   <div class="status"><span class="dot" id="connDot"></span><span id="connTxt">bridge offline</span></div>
@@ -105,7 +106,7 @@
 
 <div class="layout">
   <div class="views">
-    <div class="viewbox" id="topView"><span class="label">TOP — X (L/R) · Y (FRONT/REAR)</span><img class="tkwm" src="assets/tk_logo.png" alt="tk Audio Services"><canvas id="cTop"></canvas></div>
+    <div class="viewbox" id="topView"><span class="label" id="topLabel">TOP — X (L/R) · Y (FRONT/REAR)</span><img class="tkwm" src="assets/tk_logo.png" alt="tk Audio Services"><canvas id="cTop"></canvas></div>
     <div class="viewbox" id="frontView"><span class="label">FRONT — X (L/R) · Z (HEIGHT)</span><canvas id="cFront"></canvas></div>
   </div>
 
@@ -205,6 +206,8 @@
         <div class="hint help">DBAP (distance-based amplitude panning): every object feeds every speaker, weighted by distance, constant-power normalised. <b>Focus</b> tightens each object onto its nearest speakers; <b>Spread</b> widens it across more. The latch lines (links + thicknesses) follow both.</div>
         <div class="row"><label>Focus</label><input type="range" id="pRoll" min="0" max="100" step="1"><span class="val" id="pRollv">43%</span></div>
         <div class="row"><label>Spread</label><input type="range" id="pBlur" min="0" max="100" step="1"><span class="val" id="pBlurv">15%</span></div>
+        <div class="row"><label>Depth</label><input type="range" id="pDepth" min="0" max="100" step="1"><span class="val" id="pDepthv">0%</span></div>
+        <div class="hint help">Depth is a near/far cue: objects further from the listener (room centre) get a touch duller (air absorption) and quieter. 0 = off. Distant objects also dim in the view.</div>
       </div>
     </div>
 
@@ -252,11 +255,11 @@ let state = {
   room:{w:10,d:10,h:4},
   speakers:[],
   objects:[],
-  panner:{rolloff:2.0, blur:0.10, threshold:0.02},   // threshold: fixed faint-line hide (no UI control)
+  panner:{rolloff:2.0, blur:0.10, depth:0, threshold:0.02},   // threshold: fixed faint-line hide (no UI control)
   bridge:{url:"http://localhost:9000", connected:false, rate:30},
   tracks:[],
   selObj:null, selObjs:[], selSpk:null, mode:"objects", fxPaused:false,
-  cues:[], selCue:null, recording:false, covView:"all"
+  cues:[], selCue:null, recording:false, covView:"all", topMode:"cart"
 };
 let activeDragId=null;   // object id being dragged — pollState won't overwrite it
 
@@ -380,9 +383,13 @@ const ctxT=cTop.getContext('2d'), ctxF=cFront.getContext('2d');
 function fit(cv){ const r=cv.parentElement.getBoundingClientRect(); const dpr=window.devicePixelRatio||1;
   cv.width=Math.max(1,r.width*dpr); cv.height=Math.max(1,r.height*dpr); const c=cv.getContext('2d'); c.setTransform(dpr,0,0,dpr,0,0); return {w:r.width,h:r.height}; }
 
-// top: x:-1..1 -> [PAD,w-PAD]; y:+1(front)..-1(rear) -> [PAD,h-PAD]
-function topXY(x,y,w,h){ return [map(x,-1,1,PAD,w-PAD), map(y,1,-1,PAD,h-PAD)]; }
-function topInv(sx,sy,w,h){ return [clamp(map(sx,PAD,w-PAD,-1,1)), clamp(map(sy,PAD,h-PAD,1,-1))]; }
+// top view mapping — Cartesian (fills the rect) or Radial (listener centred, polar). Both centre at
+// (cx,cy) with +x right, +y up(front); radial uses an equal scale so the room reads as a circle.
+function topScale(w,h){ return state.topMode==='radial'
+  ? {cx:w/2, cy:h/2, sx:Math.min(w,h)/2-PAD, sy:Math.min(w,h)/2-PAD}
+  : {cx:w/2, cy:h/2, sx:(w-2*PAD)/2, sy:(h-2*PAD)/2}; }
+function topXY(x,y,w,h){ const s=topScale(w,h); return [s.cx + x*s.sx, s.cy - y*s.sy]; }
+function topInv(sx,sy,w,h){ const s=topScale(w,h); return [clamp((sx-s.cx)/s.sx), clamp(-(sy-s.cy)/s.sy)]; }
 // front: x:-1..1 -> [PAD,w-PAD]; z:0(floor)..1(ceil) -> [h-PAD,PAD]
 function frontXZ(x,z,w,h){ return [map(x,-1,1,PAD,w-PAD), map(z,0,1,h-PAD,PAD)]; }
 function frontInv(sx,sz,w,h){ return [clamp(map(sx,PAD,w-PAD,-1,1)), clamp(map(sz,h-PAD,PAD,0,1),0,1)]; }
@@ -395,6 +402,24 @@ function drawGrid(ctx,w,h){
   ctx.moveTo(w/2,PAD); ctx.lineTo(w/2,h-PAD);
   ctx.moveTo(PAD,h/2); ctx.lineTo(w-PAD,h/2);
   ctx.stroke();
+}
+// the top canvas grid: Cartesian rect or Radial (L-ISA/KLANG style — listener centred, rings + spokes)
+function drawTopGrid(ctx,w,h){
+  if(state.topMode!=='radial') return drawGrid(ctx,w,h);
+  const {cx,cy,sx}=topScale(w,h);
+  ctx.fillStyle='#0c0f13'; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle='#202833'; ctx.lineWidth=1;
+  for(let r=0.25;r<=1.001;r+=0.25){ ctx.beginPath(); ctx.arc(cx,cy,r*sx,0,Math.PI*2); ctx.stroke(); }   // distance rings
+  ctx.beginPath();
+  for(let a=0;a<360;a+=45){ const rad=a*Math.PI/180; ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.sin(rad)*sx, cy-Math.cos(rad)*sx); }  // spokes
+  ctx.stroke();
+  ctx.fillStyle='#5a6470'; ctx.font='10px '+getComputedStyle(document.body).getPropertyValue('--mono');
+  ctx.textAlign='center'; ctx.fillText('FRONT', cx, cy-sx-6); ctx.fillText('REAR', cx, cy+sx+12);
+  ctx.textAlign='left'; ctx.fillText('R', cx+sx+4, cy+3); ctx.textAlign='right'; ctx.fillText('L', cx-sx-4, cy+3);
+  ctx.textAlign='start';
+  // listener at the centre
+  ctx.fillStyle='#39c0ed'; ctx.beginPath(); ctx.arc(cx,cy,3,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(57,192,237,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,7,0,Math.PI*2); ctx.stroke();
 }
 function drawSpeaker(ctx,sx,sy,name,sel){
   if(sel){ ctx.strokeStyle='#39c0ed'; ctx.lineWidth=2; ctx.strokeRect(sx-8,sy-8,16,16); }   // clear selection ring
@@ -425,7 +450,7 @@ function covHandles(s){
 }
 function drawCoverage(ctx,w,h){
   if(state.mode!=='room' || state.covView==='off') return;  // hidden while panning, or coverage off
-  const sxS=(w-2*PAD)/2, syS=(h-2*PAD)/2;
+  const _s=topScale(w,h), sxS=_s.sx, syS=_s.sy;
   state.speakers.forEach(s=>{ if(!covShown(s)) return; const sel=s.id===state.selSpk, rgb=COV_RGB[s.type||0]||COV_RGB[0];
     const fill=`rgba(${rgb},${sel?0.20:0.07})`, stroke=`rgba(${rgb},${sel?0.95:0.42})`, lw=sel?1.6:1;
     if((s.type||0)===1){                                   // wall: wedge/cone
@@ -454,7 +479,7 @@ function drawCoverage(ctx,w,h){
 }
 // effect path/extent for an object (top view) — the area its motion/size covers, around the base
 function drawFxPath(ctx,o,w,h){
-  const [bx,by]=topXY(o.x,o.y,w,h), sxS=(w-2*PAD)/2, syS=(h-2*PAD)/2, d=o.depth||0;
+  const _s=topScale(w,h), sxS=_s.sx, syS=_s.sy, [bx,by]=topXY(o.x,o.y,w,h), d=o.depth||0;
   ctx.save(); ctx.globalAlpha=0.5; ctx.strokeStyle=o.color; ctx.setLineDash([4,4]); ctx.lineWidth=1;
   ctx.beginPath();
   if(o.effect===1||o.effect===4){ ctx.ellipse(bx,by,Math.max(1,d*sxS),Math.max(1,d*syS),0,0,Math.PI*2); }          // orbit / drift bound
@@ -465,10 +490,13 @@ function drawFxPath(ctx,o,w,h){
   ctx.save(); ctx.globalAlpha=0.4; ctx.strokeStyle=o.color; ctx.beginPath(); ctx.arc(bx,by,3,0,Math.PI*2); ctx.stroke(); ctx.restore();
 }
 
+// distant objects fade in the view when the depth cue is on (mirrors the audio near/far cue)
+function depthAlpha(p){ const d=state.panner.depth||0; if(!d) return 1;
+  const dist=Math.sqrt(p.x*p.x+p.y*p.y+(p.z||0)*(p.z||0)); return Math.max(0.35, 1-d*dist*0.55); }
 function render(){
   const T=fit(cTop), F=fit(cFront);
   // TOP VIEW
-  drawGrid(ctxT,T.w,T.h);
+  drawTopGrid(ctxT,T.w,T.h);
   drawCoverage(ctxT,T.w,T.h);   // speaker footprints, behind the latch lines
   // latch lines (from the effective, effect-modulated position)
   state.objects.forEach(o=>{ if(o.visible===false) return;
@@ -486,8 +514,10 @@ function render(){
   state.objects.forEach(o=>{ if(o.visible===false) return;
     if(o.effect) drawFxPath(ctxT,o,T.w,T.h);
     const p=effPos(o); const [ox,oy]=topXY(p.x,p.y,T.w,T.h), sel=state.selObjs.includes(o.id);
+    ctxT.globalAlpha=depthAlpha(p);
     ctxT.beginPath(); ctxT.arc(ox,oy,sel?9:7,0,7); ctxT.fillStyle=o.color; ctxT.fill();
     if(sel){ ctxT.strokeStyle=o.id===state.selObj?'#fff':'#39c0ed'; ctxT.lineWidth=2; ctxT.stroke(); }
+    ctxT.globalAlpha=1;
     ctxT.fillStyle='#0c0f13'; ctxT.font='bold 9px sans-serif'; ctxT.textAlign='center'; ctxT.textBaseline='middle';
     ctxT.fillText((state.objects.indexOf(o)+1), ox, oy); ctxT.textAlign='start'; ctxT.textBaseline='alphabetic';
   });
@@ -504,8 +534,10 @@ function render(){
   });
   state.speakers.forEach(s=>{ const [sx,sz]=frontXZ(s.x,s.z,F.w,F.h); drawSpeaker(ctxF,sx,sz,s.name, s.id===state.selSpk); });
   state.objects.forEach(o=>{ if(o.visible===false) return; const p=effPos(o); const [ox,oz]=frontXZ(p.x,p.z,F.w,F.h), sel=state.selObjs.includes(o.id);
+    ctxF.globalAlpha=depthAlpha(p);
     ctxF.beginPath(); ctxF.arc(ox,oz,sel?8:6,0,7); ctxF.fillStyle=o.color; ctxF.fill();
     if(sel){ ctxF.strokeStyle=o.id===state.selObj?'#fff':'#39c0ed'; ctxF.lineWidth=2; ctxF.stroke(); }
+    ctxF.globalAlpha=1;
   });
 }
 
@@ -844,6 +876,10 @@ function pushRoom(){ clearTimeout(roomTimer); roomTimer=setTimeout(()=>{
 },150); }
 function setMode(m){ state.mode=m; const b=$('modeRoom'); if(b) b.classList.toggle('on', m==='room'); render(); }
 $('modeRoom').onclick=()=>setMode(state.mode==='room'?'objects':'room');
+$('viewRadial').onclick=()=>{ state.topMode = state.topMode==='radial'?'cart':'radial';
+  $('viewRadial').classList.toggle('on', state.topMode==='radial');
+  $('topLabel').textContent = state.topMode==='radial' ? 'TOP · RADIAL — listener centred · FRONT up' : 'TOP — X (L/R) · Y (FRONT/REAR)';
+  render(); };
 
 // Pause FX — freeze every object effect at its base position. In the plug‑in we set Effect=Off
 // (so the audio stops moving) while keeping each object's effect/rate/depth/axis in the UI; resume
@@ -867,12 +903,14 @@ const focusToRoll  = p => 0.5 + (p/100)*3.5,  rollToFocus  = r => Math.round((r-
 const spreadToBlur = p => 0.01 + (p/100)*0.59, blurToSpread = b => Math.round((b-0.01)/0.59*100);
 $('pRoll').oninput=e=>{ const p=parseFloat(e.target.value); state.panner.rolloff=focusToRoll(p); $('pRollv').textContent=p+'%'; render(); pushLaw(); };
 $('pBlur').oninput=e=>{ const p=parseFloat(e.target.value); state.panner.blur=spreadToBlur(p); $('pBlurv').textContent=p+'%'; render(); pushLaw(); };
+$('pDepth').oninput=e=>{ const p=parseFloat(e.target.value); state.panner.depth=p/100; $('pDepthv').textContent=p+'%'; render(); pushLaw(); };
 let lawTimer=0;
 function pushLaw(){ clearTimeout(lawTimer); lawTimer=setTimeout(()=>{
   const targets=state.objects.filter(o=>o.osc), msgs=[], h=$('hdrSent');
   targets.forEach(o=>{ const m=o.osc;
     msgs.push({addr:`/track/${m.track}/fx/${m.fx}/fxparam/8/value`, value:state.panner.rolloff});
-    msgs.push({addr:`/track/${m.track}/fx/${m.fx}/fxparam/9/value`, value:state.panner.blur}); });
+    msgs.push({addr:`/track/${m.track}/fx/${m.fx}/fxparam/9/value`, value:state.panner.blur});
+    msgs.push({addr:`/track/${m.track}/fx/${m.fx}/fxparam/16/value`, value:state.panner.depth||0}); });
   if(!msgs.length){ if(h) h.textContent='law: no objects — add tk SurroundPanner to a track'; return; }
   postOSC(msgs).then(ok=>{ if(h) h.textContent=(ok?'✓ ':'✗ ')+`law → ${targets.length} obj · roll ${state.panner.rolloff.toFixed(1)} · blur ${state.panner.blur.toFixed(2)}`; });
 },120); }
@@ -944,6 +982,7 @@ function applyImport(d){
   state.selObj=null; state.selObjs=[]; state.selSpk=null;
   $('pRoll').value=rollToFocus(state.panner.rolloff); $('pBlur').value=blurToSpread(state.panner.blur);
   $('pRollv').textContent=rollToFocus(state.panner.rolloff)+'%'; $('pBlurv').textContent=blurToSpread(state.panner.blur)+'%';
+  $('pDepth').value=Math.round((state.panner.depth||0)*100); $('pDepthv').textContent=Math.round((state.panner.depth||0)*100)+'%';
   renderAll(); pushRoom(); pushLaw();   // sync the law to every freshly-loaded object's plugin
 }
 // file import/export removed — the Live script keeps the UI in sync with REAPER
@@ -1050,6 +1089,7 @@ bindCanvas(cTop,ctxT,'top'); bindCanvas(cFront,ctxF,'front');
 window.addEventListener('resize', render);
 $('pRoll').value=rollToFocus(state.panner.rolloff); $('pRollv').textContent=rollToFocus(state.panner.rolloff)+'%';
 $('pBlur').value=blurToSpread(state.panner.blur); $('pBlurv').textContent=blurToSpread(state.panner.blur)+'%';
+$('pDepth').value=Math.round((state.panner.depth||0)*100); $('pDepthv').textContent=Math.round((state.panner.depth||0)*100)+'%';
 $('bRate').value=30;
 loadPreset('7.1.4');
 loadCues(); renderCues();
