@@ -3,6 +3,15 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.12.0
+- **Wall speakers are now a wedge/cone.** Wall-mounted speakers throw a triangular beam out from the point: **Throw** (how far the audio reaches, in metres), **Beam°** (cone width, default 90°), and **Aim°** (direction). Objects inside the cone get full feed with a soft edge outside — both the picture and the audio weighting. Ceiling/sub keep the ellipse footprint. (Replaces the old forward-ellipse lobe for walls.)
+- **Coverage shows only in *Edit room*.** Speaker footprints/cones draw while you're shaping the room and hide once you're panning objects, so the planner stays clean. The selected speaker's coverage and a clear selection ring are highlighted.
+- **Click a speaker in the list → it highlights on the canvas** (selecting an object or speaker in the side panel now updates the main view, not just the editor).
+- **Pause FX.** A master *Pause FX* button freezes every object effect at its base position — in the preview **and** the plug-in (Effect → Off, settings kept) — so you can stop all motion at once and resume it exactly.
+- **Save / Export / Import speaker layouts.** *Room & speakers* can export the whole room + speaker layout to a JSON file and import it back, for reusing venue rigs across shows.
+- **Multi-select objects.** Ctrl/⌘-click and Shift-click in the *Objects* list to select several at once; the effect controls (type / rate / depth / axis) then apply to the whole selection, so you can shape a group of objects together.
+- Under the hood: per-speaker shared-memory block grew 8 → 9 (adds wall **beam width**); the Live script and JSFX stay in lock-step.
+
 ## v0.11.0
 - **Real-world units (metres).** The room now has a size (W × D × H in metres, in *Room & speakers*), and object positions, coverage and effect depth all read in metres (X/Y share one isotropic scale, Z uses the height). Internally still normalized, so the engine is unchanged.
 - **Speaker mount types — ceiling / wall / sub.** Each speaker has a type. **Ceiling** keeps the down-facing footprint (the coverage ellipse centred under it); **wall** throws its coverage as a forward lobe along its Angle (so directional wall speakers only feed what they point at); **sub** for low-end. The panner and the browser preview both weight by the right shape per type.

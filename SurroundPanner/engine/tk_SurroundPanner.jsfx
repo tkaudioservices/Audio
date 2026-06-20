@@ -1,4 +1,4 @@
-desc:tk SurroundPanner v0.11.0
+desc:tk SurroundPanner v0.12.0
 //  tk Audio Services — object panner for tkSurroundPanner
 //  2 in -> up to 16 out. DBAP, matching the web UI's latch-line view.
 //  Speaker layout is read live from shared memory (set by SurroundPanner_Live.lua
@@ -42,12 +42,13 @@ out_pin:16
 @init
 MAXOUT = 16;
 kx = 10000; ky = 10100; kz = 10200; klfe = 10300; kg = 10400; mpk = 10500;   // active layout + meter peaks (local mem)
-kcw = 10600; kcd = 10700; kca = 10800; ktype = 10900;           // per-speaker coverage ellipse (w, d, angle°) + mount type
+kcw = 10600; kcd = 10700; kca = 10800; ktype = 10900;           // per-speaker coverage (w/throw, d, angle°) + mount type
 dkx = 11000; dky = 11100; dkz = 11200; dklfe = 11300;            // built-in default (7.1.4)
+kcbw = 11400;                                                    // wall wedge beam width (degrees)
 NDEF = 12;
 MB = 1000;  // gmem meter base: gmem[MB+ch] = peak per output, shared with the Lua / web UI
-            // (well clear of the layout region gmem[1 + i*STRIDE ..], which can reach ~128 at 16 spk)
-STRIDE = 8; // per-speaker gmem block: x, y, z, lfe, cw, cd, ca, type (0 ceiling, 1 wall, 2 sub)
+            // (well clear of the layout region gmem[1 + i*STRIDE ..], which can reach ~145 at 16 spk)
+STRIDE = 9; // per-speaker gmem block: x, y, z, lfe, cw, cd, ca, type, beamwidth (type: 0 ceiling, 1 wall, 2 sub)
 lpk = 1 - exp(-2*$pi*120 / srate);   // 1-pole low-pass coeff (~120 Hz) for the LFE send
 lpz = 0;
 fxphase = 0; drx = 0; dry = 0; dtx = 0; dty = 0; driftn = 0;   // effects-engine LFO + drift state
@@ -70,27 +71,38 @@ function loadlayout() local(n i b) (
     i = 0; loop(NSPK,
       b = 1 + i*STRIDE;
       kx[i]=gmem[b]; ky[i]=gmem[b+1]; kz[i]=gmem[b+2]; klfe[i]=gmem[b+3];
-      kcw[i]=gmem[b+4]; kcd[i]=gmem[b+5]; kca[i]=gmem[b+6]; ktype[i]=gmem[b+7]; i+=1; );
+      kcw[i]=gmem[b+4]; kcd[i]=gmem[b+5]; kca[i]=gmem[b+6]; ktype[i]=gmem[b+7]; kcbw[i]=gmem[b+8]; i+=1; );
   ) : (
     NSPK = NDEF;
     i = 0; loop(NSPK, kx[i]=dkx[i]; ky[i]=dky[i]; kz[i]=dkz[i]; klfe[i]=dklfe[i];
-      kcw[i]=0; kcd[i]=0; kca[i]=0; ktype[i]=0; i+=1; );   // built-in default: ceiling, no coverage shaping
+      kcw[i]=0; kcd[i]=0; kca[i]=0; ktype[i]=0; kcbw[i]=90; i+=1; );   // built-in default: ceiling, no coverage shaping
   );
 );
 
 // Coverage weight for speaker i at object (ox,oy): how well the object sits inside the speaker's
-// footprint (top-down X/Y). cw/cd are half-axes, ca the angle°. type: 0 ceiling/sub (footprint
-// centred on the speaker), 1 wall (lobe sits in front, along ca). 0 cw/cd => off (weight 1).
-function coverage(i ox oy) local(dx dy ca cs sn lx ly e cx cy) (
-  (kcw[i] > 0 && kcd[i] > 0) ? (
-    ca = kca[i]*$pi/180; cs = cos(ca); sn = sin(ca);
-    cx = kx[i]; cy = ky[i];
-    ktype[i] == 1 ? ( cx += kcw[i]*cs; cy += kcw[i]*sn; );   // wall: throw the lobe forward, into the room
-    dx = ox-cx; dy = oy-cy;
-    lx = dx*cs + dy*sn; ly = -dx*sn + dy*cs;
-    e = sqrt(sqr(lx/kcw[i]) + sqr(ly/kcd[i]));
-    e <= 1 ? 1 : max(0.001, exp(-sqr(e-1)*4));   // soft edge outside the ellipse, floored so it never drops out
-  ) : 1;
+// footprint (top-down X/Y). Ceiling/sub: ellipse, cw/cd half-axes, ca rotation°. Wall: a wedge/cone
+// thrown forward along ca — cw = throw distance, kcbw = beam width°. 0 => off (weight 1). Mirrors the UI.
+function coverage(i ox oy) local(dx dy ca cs sn lx ly e cx cy r da hw thr) (
+  ktype[i] == 1 ? (                                  // wall: directional wedge
+    thr = kcw[i];
+    thr > 0 ? (
+      ca = kca[i]*$pi/180;
+      dx = ox-kx[i]; dy = oy-ky[i]; r = sqrt(dx*dx+dy*dy);
+      hw = max(1, kcbw[i])*0.5*$pi/180;
+      da = atan2(dy,dx) - ca; da = atan2(sin(da), cos(da));   // wrap to -pi..pi
+      e = max(abs(da)/hw, r/thr);                   // 1 at the cone's angular OR radial edge
+      e <= 1 ? 1 : max(0.001, exp(-sqr(e-1)*4));
+    ) : 1;
+  ) : (
+    (kcw[i] > 0 && kcd[i] > 0) ? (                   // ceiling/sub: ellipse footprint
+      ca = kca[i]*$pi/180; cs = cos(ca); sn = sin(ca);
+      cx = kx[i]; cy = ky[i];
+      dx = ox-cx; dy = oy-cy;
+      lx = dx*cs + dy*sn; ly = -dx*sn + dy*cs;
+      e = sqrt(sqr(lx/kcw[i]) + sqr(ly/kcd[i]));
+      e <= 1 ? 1 : max(0.001, exp(-sqr(e-1)*4));    // soft edge outside the ellipse, floored so it never drops out
+    ) : 1;
+  );
 );
 
 // Compute the per-speaker gains for an object at (ox,oy,oz). xblur widens the field (object size).
