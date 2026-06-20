@@ -1,4 +1,4 @@
-desc:tk SurroundPanner v0.19.0
+desc:tk SurroundPanner v0.21.0
 //  tk Audio Services — object panner for tkSurroundPanner
 //  2 in -> up to 16 out. DBAP, matching the web UI's latch-line view.
 //  Speaker layout is read live from shared memory (set by SurroundPanner_Live.lua
@@ -20,6 +20,7 @@ slider9:0.3<0,5,0.001>FX Rate (Hz)
 slider10:0.3<0,1,0.0001>FX Depth
 slider11:0<0,2,1{X,Y,Z}>FX Axis (Oscillate)
 slider12:0<0,1,0.0001>FX Phase  (cycle offset, for staggering objects)
+slider13:0<0,1,0.0001>Depth cue  (air absorption + distance roll-off)
 
 in_pin:source L
 in_pin:source R
@@ -53,6 +54,7 @@ STRIDE = 9; // per-speaker gmem block: x, y, z, lfe, cw, cd, ca, type, beamwidth
 lpk = 1 - exp(-2*$pi*120 / srate);   // 1-pole low-pass coeff (~120 Hz) for the LFE send
 lpz = 0;
 fxphase = 0; drx = 0; dry = 0; dtx = 0; dty = 0; driftn = 0;   // effects-engine LFO + drift state
+dlp = 0; dlpc = 1; datt = 1;   // depth cue: air-absorption 1-pole state + coeff, distance attenuation
 
 function dspk(i x y z lf) ( dkx[i]=x; dky[i]=y; dkz[i]=z; dklfe[i]=lf; );
 dspk(0, -0.8, 1.0, 0.0, 0);  dspk(1,  0.8, 1.0, 0.0, 0);  dspk(2, 0.0, 1.0, 0.0, 0);
@@ -182,17 +184,27 @@ loadlayout();
 applyfx();
 pw1 = slider1; pw2 = slider2; pw3 = slider3;          // remember what the sliders now read (incl. our fx writes)
 calcgains(ex, ey, ez, xblur);
+// Depth cue: distance from the listener (room centre) dulls + quietens the object — a near/far cue.
+// fc (air-absorption low-pass) and datt (level) recomputed per block from the live position.
+slider13 > 0.0001 ? (
+  od = sqrt(ex*ex + ey*ey + ez*ez);
+  fc = max(800, min(20000, 20000*exp(-od*slider13*1.6)));
+  dlpc = 1 - exp(-2*$pi*fc/srate);
+  datt = max(0.25, 1 - slider13*od*0.4);
+) : ( dlpc = 1; datt = 1; );
 // publish per-output peaks to shared memory (max across all instances), then decay the hold
 i = 0; loop(NSPK, gmem[MB + i] = max(gmem[MB + i], mpk[i]); mpk[i] *= 0.85; i += 1; );
 
 @sample
 mix = (spl0 + spl1) * 0.5;
 lpz = lpz + lpk*(mix - lpz);                    // low-passed mono, for the LFE send (always run)
+dlp = dlp + dlpc*(mix - dlp);                   // depth-cue air-absorption (dlpc=1 => passthrough)
+dmix = dlp * datt;                              // + distance attenuation
 lfeamt = slider7;
 i = 0; loop(MAXOUT, spl(i) = 0; i += 1; );      // clear outputs
 i = 0; loop(NSPK,
-  klfe[i] ? ( spl(i) = lpz * lfeamt; )          // LFE channel: low-passed per-object send
-          : ( spl(i) = mix * kg[i]; );          // positional channels: DBAP
+  klfe[i] ? ( spl(i) = lpz * lfeamt; )          // LFE channel: low-passed per-object send (depth-independent)
+          : ( spl(i) = dmix * kg[i]; );         // positional channels: DBAP, with the depth cue
   v = abs(spl(i)); v > mpk[i] ? mpk[i] = v;      // peak per output, for the web UI meters
   i += 1;
 );

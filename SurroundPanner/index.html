@@ -60,7 +60,7 @@
   .row label{width:74px;color:var(--dim);flex:none}
   .row input[type=text],.row input[type=number],.row select{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:4px;padding:5px 6px;min-width:0}
   .row input[type=range]{flex:1}
-  .row .val{width:46px;text-align:right;font-family:var(--mono);color:var(--accent);flex:none}
+  .row .val{width:58px;text-align:right;font-family:var(--mono);color:var(--accent);flex:none;white-space:nowrap}
   .list{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
   .item{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--panel2);border:1px solid var(--line);border-radius:5px;cursor:pointer}
   .item.sel{border-color:var(--accent)}
@@ -81,6 +81,12 @@
   .mini{display:flex;gap:6px;margin:6px 0}
   .mini .btn{flex:1;text-align:center;padding:6px}
   .hint{color:var(--dim);font-size:11px;line-height:1.5;margin:4px 0}
+  .sect .hint.help{display:none}
+  .sect.help-on .hint.help{display:block}
+  .info{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--line);color:var(--dim);font:italic 700 10px serif;cursor:pointer;flex:none}
+  .info:hover,.info.on{color:var(--accent);border-color:var(--accent)}
+  .sect h3 .right{display:flex;align-items:center;gap:8px}
+  .subhdr{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);margin:10px 0 2px;border-top:1px solid var(--line);padding-top:8px}
   .kbd{font-family:var(--mono);background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:1px 5px;color:var(--txt)}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
   .pill{font-family:var(--mono);font-size:10px;color:var(--dim)}
@@ -89,9 +95,10 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.19.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.21.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
+  <button class="btn toggle" id="viewRadial" title="Top view: Cartesian ⟷ Radial (listener‑centred, L‑ISA/KLANG style)">Radial</button>
   <span class="spacer"></span>
   <span class="lastsent" id="hdrSent" title="last command sent to REAPER">—</span>
   <div class="status"><span class="dot" id="connDot"></span><span id="connTxt">bridge offline</span></div>
@@ -99,25 +106,25 @@
 
 <div class="layout">
   <div class="views">
-    <div class="viewbox" id="topView"><span class="label">TOP — X (L/R) · Y (FRONT/REAR)</span><img class="tkwm" src="assets/tk_logo.png" alt="tk Audio Services"><canvas id="cTop"></canvas></div>
+    <div class="viewbox" id="topView"><span class="label" id="topLabel">TOP — X (L/R) · Y (FRONT/REAR)</span><img class="tkwm" src="assets/tk_logo.png" alt="tk Audio Services"><canvas id="cTop"></canvas></div>
     <div class="viewbox" id="frontView"><span class="label">FRONT — X (L/R) · Z (HEIGHT)</span><canvas id="cFront"></canvas></div>
   </div>
 
   <div class="side">
     <!-- OBJECTS -->
     <div class="sect" id="sObjects">
-      <h3>Objects <span class="chev">▾</span></h3>
+      <h3>Objects <span class="right"><span class="info" title="Show / hide help">i</span><span class="chev">▾</span></span></h3>
       <div class="body">
         <div class="list" id="objList"></div>
-        <div class="hint" id="objHint">Objects are your REAPER tracks — they load automatically while <span class="kbd">SurroundPanner_Live.lua</span> is running. The name shown is the track name.</div>
+        <div class="hint help" id="objHint">Objects are your REAPER tracks — they load automatically while <span class="kbd">SurroundPanner_Live.lua</span> is running. Editing the name here renames the REAPER track.</div>
         <div id="objEditor" style="display:none">
-          <div class="row"><label>Name</label><input type="text" id="oName" readonly title="From the REAPER track name"></div>
+          <div class="row"><label>Name</label><input type="text" id="oName" title="Renames the REAPER track" placeholder="Track name"></div>
           <div class="row"><label>X · L/R</label><input type="range" id="oX" min="-1" max="1" step="0.001"><span class="val" id="oXv">0</span></div>
           <div class="row"><label>Y · F/R</label><input type="range" id="oY" min="-1" max="1" step="0.001"><span class="val" id="oYv">0</span></div>
           <div class="row"><label>Z · Height</label><input type="range" id="oZ" min="0" max="1" step="0.001"><span class="val" id="oZv">0</span></div>
           <div class="row"><label>Gain</label><input type="range" id="oG" min="0" max="1" step="0.001"><span class="val" id="oGv">1.0</span></div>
           <div class="row"><label>LFE send</label><input type="range" id="oL" min="0" max="1" step="0.001"><span class="val" id="oLv">0.0</span></div>
-          <div class="hint" style="margin-top:8px"><span id="fxScope"></span>Effect — animates this object in the plug‑in, so it renders to file. Orbit / Oscillate / Drift move it; Spread widens it across more speakers. <span class="pill">Ctrl/Shift‑click the list to select several and shape them together.</span></div>
+          <div class="hint help" style="margin-top:8px"><span id="fxScope"></span>Effect — animates this object in the plug‑in, so it renders to file. Orbit / Oscillate / Drift move it; Spread widens it across more speakers. <span class="pill">Ctrl/Shift‑click the list to select several and shape them together.</span></div>
           <div class="row"><label>Effect</label><select id="oFx"><option value="0">Off</option><option value="1">Orbit</option><option value="2">Oscillate</option><option value="3">Spread / size</option><option value="4">Random drift</option></select></div>
           <div class="row"><label>Rate</label><input type="range" id="oFr" min="0" max="100" step="0.5"><span class="val" id="oFrv">3.3 s</span></div>
           <div class="row"><label>Depth</label><input type="range" id="oFd" min="0" max="1" step="0.01"><span class="val" id="oFdv">0.3</span></div>
@@ -125,32 +132,32 @@
           <div class="row"><label>Phase</label><input type="range" id="oFp" min="0" max="1" step="0.001" title="Offset where this object is in its cycle — stagger several for chasing / flocking motion"><span class="val" id="oFpv">0°</span></div>
           <div class="mini"><button class="btn" id="oStagger" title="Spread the phase evenly across the selected objects, so they move in sequence">Stagger phases</button></div>
           <div class="mini"><button class="btn" id="oBake" title="Write the effect motion to X/Y/Z automation so a render runs offline at full speed">Bake → envelopes</button><button class="btn" id="oClearBake" title="Remove the baked automation and re-enable the live effect">Clear bake</button></div>
-          <div class="hint" id="bakeHint">Bakes the selected object(s)' Orbit / Oscillate / Drift motion to X/Y/Z automation over the time selection (whole project if none) and turns the live effect off — so an <b>offline render runs at full speed</b>. Re‑bake overwrites; Clear removes the points and re‑enables the effect. (Spread isn't a position move, so it can't be baked.)</div>
+          <div class="hint help" id="bakeHint">Bakes the selected object(s)' Orbit / Oscillate / Drift motion to X/Y/Z automation over the time selection (whole project if none) and turns the live effect off — so an <b>offline render runs at full speed</b>. Re‑bake overwrites; Clear removes the points and re‑enables the effect. (Spread isn't a position move, so it can't be baked.)</div>
           <div class="pill" id="bakeStatus" style="margin:2px 0 6px"></div>
           <div class="mini"><button class="btn toggle" id="oRec" title="Arm REAPER latch automation on the selected object(s); play and drag to record moves">● Record moves</button></div>
-          <div class="hint">Arms REAPER's <b>latch</b> automation on the selected object(s) (or all). Press <b>play</b> in REAPER and drag objects — the moves record to editable X/Y/Z automation. Turn off to stop (tracks return to read). The capture complement to Bake.</div>
+          <div class="hint help">Arms REAPER's <b>latch</b> automation on the selected object(s) (or all). Press <b>play</b> in REAPER and drag objects — the moves record to editable X/Y/Z automation. Turn off to stop (tracks return to read). The capture complement to Bake.</div>
           <div class="mini"><button class="btn" id="oTest">Test · sweep X</button></div>
-          <div class="hint">Sweeps this object's X across the room so you can confirm the link — watch it move in REAPER. The track, FX and parameter mapping are filled in automatically by the Live script.</div>
+          <div class="hint help">Sweeps this object's X across the room so you can confirm the link — watch it move in REAPER. The track, FX and parameter mapping are filled in automatically by the Live script.</div>
         </div>
       </div>
     </div>
 
     <!-- CUES -->
     <div class="sect collapsed" id="sCues">
-      <h3>Cues <span class="chev">▾</span></h3>
+      <h3>Cues <span class="right"><span class="info" title="Show / hide help">i</span><span class="chev">▾</span></span></h3>
       <div class="body">
         <div class="list" id="cueList"></div>
         <div class="row"><label>Name</label><input type="text" id="cueName" placeholder="e.g. Verse 1 — wide"></div>
         <div class="mini"><button class="btn primary" id="cueCapture">Capture cue</button><button class="btn" id="cueExport" title="Save cues to a file">Export</button><button class="btn" id="cueImport" title="Load cues from a file">Import</button></div>
         <input type="file" id="cueFile" accept="application/json,.json" style="display:none">
         <div class="row"><label>Morph</label><input type="range" id="cueMorph" min="0" max="20" step="0.5" value="0"><span class="val" id="cueMorphv">0 s</span></div>
-        <div class="hint">A cue stores every object's position, gain, mute/solo and effect. Click a cue to recall it; with <b>Morph &gt; 0</b> the objects glide there over that time. <span class="kbd">U</span> updates a cue to the current scene. Cues are saved in this browser; Export/Import to move them between machines.</div>
+        <div class="hint help">A cue stores every object's position, gain, mute/solo and effect. Click a cue to recall it; with <b>Morph &gt; 0</b> the objects glide there over that time. <span class="kbd">U</span> updates a cue to the current scene. Cues are saved in this browser; Export/Import to move them between machines.</div>
       </div>
     </div>
 
     <!-- ROOM -->
     <div class="sect collapsed" id="sRoom">
-      <h3>Room &amp; speakers <span class="chev">▾</span></h3>
+      <h3>Room &amp; speakers <span class="right"><span class="info" title="Show / hide help">i</span><span class="chev">▾</span></span></h3>
       <div class="body">
         <div class="row"><label>Preset</label>
           <select id="preset">
@@ -163,27 +170,28 @@
           </select>
         </div>
         <div class="row"><label>Room · m</label><input type="number" id="rW" step="0.5" min="1" title="Width (X)"><input type="number" id="rD" step="0.5" min="1" title="Depth (Y)"><input type="number" id="rH" step="0.5" min="1" title="Height (Z)"></div>
-        <div class="hint">Speakers feed the panner live. Speaker <b>#n drives REAPER output channel n</b> — order matters. X/Y −1…1, Z 0…1; tick LFE for a non‑positional channel.</div>
+        <div class="row"><label>Coverage</label><select id="covView" title="Which speakers' coverage footprints to draw in Edit room"><option value="all">Draw all</option><option value="selected">Selected only</option><option value="off">Hidden</option></select></div>
+        <div class="hint help">Speakers feed the panner live — speaker <b>#n drives REAPER output channel n</b>, so order matters. In <b>Edit room</b> drag a speaker to move it, or drag the handles on its coverage to shape it. Set <i>Coverage → Selected only</i> to fine‑tune one at a time.</div>
         <div class="list" id="spkList"></div>
         <div class="mini"><button class="btn" id="addSpk">+ Add speaker</button><button class="btn" id="expLayout" title="Save this room + speaker layout to a file">Export</button><button class="btn" id="impLayout" title="Load a saved room + speaker layout">Import</button></div>
         <input type="file" id="impFile" accept="application/json,.json" style="display:none">
         <div id="spkEditor" style="display:none">
+          <div class="subhdr">Speaker</div>
           <div class="row"><label>Name</label><input type="text" id="sName"></div>
-          <div class="row"><label>Type</label><select id="sType"><option value="0">Ceiling (footprint)</option><option value="1">Wall (directional)</option><option value="2">Sub</option></select></div>
-          <div class="grid2">
-            <div class="row"><label>X · m</label><input type="number" id="sX" step="0.1"></div>
-            <div class="row"><label>Y · m</label><input type="number" id="sY" step="0.1"></div>
-            <div class="row"><label>Z · m</label><input type="number" id="sZ" step="0.1"></div>
-            <div class="row"><label>LFE</label><input type="checkbox" id="sLfe"></div>
-          </div>
-          <div class="hint" style="margin-top:8px" id="covHint">Coverage (metres) — the area this speaker/zone feeds (0 = off). <b>Ceiling/Sub</b>: ellipse footprint, W/D half-sizes. <b>Wall</b>: a wedge thrown forward — <i>Throw</i> = how far it reaches along <i>Angle</i>, <i>Beam</i> = cone width. Objects outside it get little feed, so the pan follows the real rig.</div>
-          <div class="grid2" id="covEllipse">
-            <div class="row"><label>Cover W</label><input type="number" id="sCW" min="0" step="0.1"></div>
-            <div class="row"><label>Cover D</label><input type="number" id="sCD" min="0" step="0.1"></div>
+          <div class="row"><label>Type</label><select id="sType"><option value="0">Ceiling (footprint)</option><option value="1">Wall (directional)</option><option value="2">Sub (low‑freq)</option></select></div>
+          <div class="row"><label>X · m</label><input type="number" id="sX" step="0.1"><span class="pill">left ↔ right</span></div>
+          <div class="row"><label>Y · m</label><input type="number" id="sY" step="0.1"><span class="pill">rear ↔ front</span></div>
+          <div class="row"><label>Z · m</label><input type="number" id="sZ" step="0.1"><span class="pill">floor ↔ ceiling</span></div>
+          <div class="row"><label>LFE</label><input type="checkbox" id="sLfe"><span class="pill">non‑positional bass channel</span></div>
+          <div class="subhdr" id="covSub">Coverage</div>
+          <div class="hint help" id="covHint">The area this speaker actually feeds (0 = covers everywhere). <b>Ceiling/Sub</b>: an ellipse footprint — <i>Width</i>/<i>Depth</i> are the half‑sizes, <i>Angle</i> rotates it. <b>Wall</b>: a wedge thrown forward — <i>Throw</i> = how far it reaches, <i>Aim</i> = direction, <i>Beam</i> = cone width. Objects outside it get little feed, so the pan follows the real rig. Drag the handles on the diagram to set these directly.</div>
+          <div id="covEllipse">
+            <div class="row"><label>Width · m</label><input type="number" id="sCW" min="0" step="0.1"></div>
+            <div class="row"><label>Depth · m</label><input type="number" id="sCD" min="0" step="0.1"></div>
             <div class="row"><label>Angle°</label><input type="number" id="sCA" min="0" max="360" step="5"></div>
           </div>
-          <div class="grid2" id="covWedge" style="display:none">
-            <div class="row"><label>Throw</label><input type="number" id="sWThrow" min="0" step="0.1"></div>
+          <div id="covWedge" style="display:none">
+            <div class="row"><label>Throw · m</label><input type="number" id="sWThrow" min="0" step="0.1"></div>
             <div class="row"><label>Beam°</label><input type="number" id="sWBeam" min="5" max="350" step="5"></div>
             <div class="row"><label>Aim°</label><input type="number" id="sWAim" min="-180" max="360" step="5"></div>
           </div>
@@ -193,11 +201,13 @@
 
     <!-- PANNER -->
     <div class="sect collapsed" id="sPanner">
-      <h3>Panner law <span class="chev">▾</span></h3>
+      <h3>Panner law <span class="right"><span class="info" title="Show / hide help">i</span><span class="chev">▾</span></span></h3>
       <div class="body">
-        <div class="hint">DBAP (distance-based amplitude panning): every object feeds every speaker, weighted by distance, constant-power normalised. <b>Focus</b> tightens each object onto its nearest speakers; <b>Spread</b> widens it across more. The latch lines (links + thicknesses) follow both.</div>
+        <div class="hint help">DBAP (distance-based amplitude panning): every object feeds every speaker, weighted by distance, constant-power normalised. <b>Focus</b> tightens each object onto its nearest speakers; <b>Spread</b> widens it across more. The latch lines (links + thicknesses) follow both.</div>
         <div class="row"><label>Focus</label><input type="range" id="pRoll" min="0" max="100" step="1"><span class="val" id="pRollv">43%</span></div>
         <div class="row"><label>Spread</label><input type="range" id="pBlur" min="0" max="100" step="1"><span class="val" id="pBlurv">15%</span></div>
+        <div class="row"><label>Depth</label><input type="range" id="pDepth" min="0" max="100" step="1"><span class="val" id="pDepthv">0%</span></div>
+        <div class="hint help">Depth is a near/far cue: objects further from the listener (room centre) get a touch duller (air absorption) and quieter. 0 = off. Distant objects also dim in the view.</div>
       </div>
     </div>
 
@@ -212,7 +222,7 @@
 
     <!-- CONNECTION -->
     <div class="sect collapsed" id="sConn">
-      <h3>REAPER connection <span class="chev">▾</span></h3>
+      <h3>REAPER connection <span class="right"><span class="info" title="Show / hide help">i</span><span class="chev">▾</span></span></h3>
       <div class="body">
         <div class="row"><label>Bridge URL</label><input type="text" id="bUrl" value="http://localhost:9000"></div>
         <div class="mini"><button class="btn primary" id="btnConnect">Connect / test</button><button class="btn" id="btnPull">Reload from REAPER</button></div>
@@ -245,11 +255,11 @@ let state = {
   room:{w:10,d:10,h:4},
   speakers:[],
   objects:[],
-  panner:{rolloff:2.0, blur:0.10, threshold:0.02},   // threshold: fixed faint-line hide (no UI control)
+  panner:{rolloff:2.0, blur:0.10, depth:0, threshold:0.02},   // threshold: fixed faint-line hide (no UI control)
   bridge:{url:"http://localhost:9000", connected:false, rate:30},
   tracks:[],
   selObj:null, selObjs:[], selSpk:null, mode:"objects", fxPaused:false,
-  cues:[], selCue:null, recording:false
+  cues:[], selCue:null, recording:false, covView:"all", topMode:"cart"
 };
 let activeDragId=null;   // object id being dragged — pollState won't overwrite it
 
@@ -373,9 +383,13 @@ const ctxT=cTop.getContext('2d'), ctxF=cFront.getContext('2d');
 function fit(cv){ const r=cv.parentElement.getBoundingClientRect(); const dpr=window.devicePixelRatio||1;
   cv.width=Math.max(1,r.width*dpr); cv.height=Math.max(1,r.height*dpr); const c=cv.getContext('2d'); c.setTransform(dpr,0,0,dpr,0,0); return {w:r.width,h:r.height}; }
 
-// top: x:-1..1 -> [PAD,w-PAD]; y:+1(front)..-1(rear) -> [PAD,h-PAD]
-function topXY(x,y,w,h){ return [map(x,-1,1,PAD,w-PAD), map(y,1,-1,PAD,h-PAD)]; }
-function topInv(sx,sy,w,h){ return [clamp(map(sx,PAD,w-PAD,-1,1)), clamp(map(sy,PAD,h-PAD,1,-1))]; }
+// top view mapping — Cartesian (fills the rect) or Radial (listener centred, polar). Both centre at
+// (cx,cy) with +x right, +y up(front); radial uses an equal scale so the room reads as a circle.
+function topScale(w,h){ return state.topMode==='radial'
+  ? {cx:w/2, cy:h/2, sx:Math.min(w,h)/2-PAD, sy:Math.min(w,h)/2-PAD}
+  : {cx:w/2, cy:h/2, sx:(w-2*PAD)/2, sy:(h-2*PAD)/2}; }
+function topXY(x,y,w,h){ const s=topScale(w,h); return [s.cx + x*s.sx, s.cy - y*s.sy]; }
+function topInv(sx,sy,w,h){ const s=topScale(w,h); return [clamp((sx-s.cx)/s.sx), clamp(-(sy-s.cy)/s.sy)]; }
 // front: x:-1..1 -> [PAD,w-PAD]; z:0(floor)..1(ceil) -> [h-PAD,PAD]
 function frontXZ(x,z,w,h){ return [map(x,-1,1,PAD,w-PAD), map(z,0,1,h-PAD,PAD)]; }
 function frontInv(sx,sz,w,h){ return [clamp(map(sx,PAD,w-PAD,-1,1)), clamp(map(sz,h-PAD,PAD,0,1),0,1)]; }
@@ -389,6 +403,24 @@ function drawGrid(ctx,w,h){
   ctx.moveTo(PAD,h/2); ctx.lineTo(w-PAD,h/2);
   ctx.stroke();
 }
+// the top canvas grid: Cartesian rect or Radial (L-ISA/KLANG style — listener centred, rings + spokes)
+function drawTopGrid(ctx,w,h){
+  if(state.topMode!=='radial') return drawGrid(ctx,w,h);
+  const {cx,cy,sx}=topScale(w,h);
+  ctx.fillStyle='#0c0f13'; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle='#202833'; ctx.lineWidth=1;
+  for(let r=0.25;r<=1.001;r+=0.25){ ctx.beginPath(); ctx.arc(cx,cy,r*sx,0,Math.PI*2); ctx.stroke(); }   // distance rings
+  ctx.beginPath();
+  for(let a=0;a<360;a+=45){ const rad=a*Math.PI/180; ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.sin(rad)*sx, cy-Math.cos(rad)*sx); }  // spokes
+  ctx.stroke();
+  ctx.fillStyle='#5a6470'; ctx.font='10px '+getComputedStyle(document.body).getPropertyValue('--mono');
+  ctx.textAlign='center'; ctx.fillText('FRONT', cx, cy-sx-6); ctx.fillText('REAR', cx, cy+sx+12);
+  ctx.textAlign='left'; ctx.fillText('R', cx+sx+4, cy+3); ctx.textAlign='right'; ctx.fillText('L', cx-sx-4, cy+3);
+  ctx.textAlign='start';
+  // listener at the centre
+  ctx.fillStyle='#39c0ed'; ctx.beginPath(); ctx.arc(cx,cy,3,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(57,192,237,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,7,0,Math.PI*2); ctx.stroke();
+}
 function drawSpeaker(ctx,sx,sy,name,sel){
   if(sel){ ctx.strokeStyle='#39c0ed'; ctx.lineWidth=2; ctx.strokeRect(sx-8,sy-8,16,16); }   // clear selection ring
   ctx.fillStyle = sel?'#fff':'#9fb0c0';
@@ -401,10 +433,25 @@ function drawSpeaker(ctx,sx,sy,name,sel){
 // Coverage has its own colour family (distinct from the blue object latch lines): ceiling = green,
 // wall = amber, sub = violet — so mount type reads at a glance.
 const COV_RGB={0:'126,231,135', 1:'240,136,62', 2:'210,168,255'};
+// which speakers' coverage to draw: covView = all / selected / off
+const covShown=s=> state.covView!=='off' && (state.covView!=='selected' || s.id===state.selSpk);
+// drag handles for the selected speaker's coverage, in WORLD coords. Wall: throw+aim, beam.
+// Ellipse: width+angle, depth. (Defaults keep handles grabbable even when coverage is 0.)
+function covHandles(s){
+  const ca=(s.ca||0)*Math.PI/180;
+  if((s.type||0)===1){
+    const thr=(s.cw>0?s.cw:0.2), hw=Math.max(1,(s.cbw||90))*0.5*Math.PI/180;
+    return [{kind:'throwaim', wx:s.x+thr*Math.cos(ca), wy:s.y+thr*Math.sin(ca)},
+            {kind:'beam',     wx:s.x+thr*Math.cos(ca+hw), wy:s.y+thr*Math.sin(ca+hw)}];
+  }
+  const cw=(s.cw>0?s.cw:(s.cd>0?s.cd:0.2)), cd=(s.cd>0?s.cd:(s.cw>0?s.cw:0.2));
+  return [{kind:'cwangle', wx:s.x+cw*Math.cos(ca), wy:s.y+cw*Math.sin(ca)},
+          {kind:'cd',      wx:s.x+cd*Math.cos(ca+Math.PI/2), wy:s.y+cd*Math.sin(ca+Math.PI/2)}];
+}
 function drawCoverage(ctx,w,h){
-  if(state.mode!=='room') return;                          // hidden while panning objects
-  const sxS=(w-2*PAD)/2, syS=(h-2*PAD)/2;
-  state.speakers.forEach(s=>{ const sel=s.id===state.selSpk, rgb=COV_RGB[s.type||0]||COV_RGB[0];
+  if(state.mode!=='room' || state.covView==='off') return;  // hidden while panning, or coverage off
+  const _s=topScale(w,h), sxS=_s.sx, syS=_s.sy;
+  state.speakers.forEach(s=>{ if(!covShown(s)) return; const sel=s.id===state.selSpk, rgb=COV_RGB[s.type||0]||COV_RGB[0];
     const fill=`rgba(${rgb},${sel?0.20:0.07})`, stroke=`rgba(${rgb},${sel?0.95:0.42})`, lw=sel?1.6:1;
     if((s.type||0)===1){                                   // wall: wedge/cone
       const thr=s.cw||0; if(!(thr>0)) return;
@@ -414,19 +461,25 @@ function drawCoverage(ctx,w,h){
       for(let k=0;k<=N;k++){ const a=ca-hw+(2*hw)*k/N, [px,py]=topXY(s.x+thr*Math.cos(a),s.y+thr*Math.sin(a),w,h); ctx.lineTo(px,py); }
       ctx.closePath();
       ctx.fillStyle=fill; ctx.fill(); ctx.strokeStyle=stroke; ctx.lineWidth=lw; ctx.stroke();
-      return;
+    } else {
+      let cw=s.cw||0, cd=s.cd||0; if(cw>0||cd>0){ cw=cw||cd; cd=cd||cw;   // ceiling/sub: ellipse (one value => circle)
+        const [cx,cy]=topXY(s.x,s.y,w,h);
+        ctx.save(); ctx.translate(cx,cy); ctx.rotate(-(s.ca||0)*Math.PI/180);   // screen Y is flipped vs world
+        ctx.beginPath(); ctx.ellipse(0,0,Math.max(1,cw*sxS),Math.max(1,cd*syS),0,0,Math.PI*2);
+        ctx.fillStyle=fill; ctx.fill(); ctx.strokeStyle=stroke; ctx.lineWidth=lw; ctx.stroke();
+        ctx.restore();
+      }
     }
-    let cw=s.cw||0, cd=s.cd||0; if(!(cw>0||cd>0)) return; cw=cw||cd; cd=cd||cw;  // ceiling/sub: ellipse (one value => circle)
-    const [cx,cy]=topXY(s.x,s.y,w,h);
-    ctx.save(); ctx.translate(cx,cy); ctx.rotate(-(s.ca||0)*Math.PI/180);   // screen Y is flipped vs world
-    ctx.beginPath(); ctx.ellipse(0,0,Math.max(1,cw*sxS),Math.max(1,cd*syS),0,0,Math.PI*2);
-    ctx.fillStyle=fill; ctx.fill(); ctx.strokeStyle=stroke; ctx.lineWidth=lw; ctx.stroke();
-    ctx.restore();
   });
+  // drag handles on the selected speaker (top view only)
+  const sel=state.speakers.find(s=>s.id===state.selSpk);
+  if(sel && ctx===ctxT){ covHandles(sel).forEach(hd=>{ const [hx,hy]=topXY(hd.wx,hd.wy,w,h);
+    ctx.beginPath(); ctx.rect(hx-4,hy-4,8,8); ctx.fillStyle='#fff'; ctx.fill();
+    ctx.strokeStyle='#39c0ed'; ctx.lineWidth=1.5; ctx.stroke(); }); }
 }
 // effect path/extent for an object (top view) — the area its motion/size covers, around the base
 function drawFxPath(ctx,o,w,h){
-  const [bx,by]=topXY(o.x,o.y,w,h), sxS=(w-2*PAD)/2, syS=(h-2*PAD)/2, d=o.depth||0;
+  const _s=topScale(w,h), sxS=_s.sx, syS=_s.sy, [bx,by]=topXY(o.x,o.y,w,h), d=o.depth||0;
   ctx.save(); ctx.globalAlpha=0.5; ctx.strokeStyle=o.color; ctx.setLineDash([4,4]); ctx.lineWidth=1;
   ctx.beginPath();
   if(o.effect===1||o.effect===4){ ctx.ellipse(bx,by,Math.max(1,d*sxS),Math.max(1,d*syS),0,0,Math.PI*2); }          // orbit / drift bound
@@ -437,10 +490,13 @@ function drawFxPath(ctx,o,w,h){
   ctx.save(); ctx.globalAlpha=0.4; ctx.strokeStyle=o.color; ctx.beginPath(); ctx.arc(bx,by,3,0,Math.PI*2); ctx.stroke(); ctx.restore();
 }
 
+// distant objects fade in the view when the depth cue is on (mirrors the audio near/far cue)
+function depthAlpha(p){ const d=state.panner.depth||0; if(!d) return 1;
+  const dist=Math.sqrt(p.x*p.x+p.y*p.y+(p.z||0)*(p.z||0)); return Math.max(0.35, 1-d*dist*0.55); }
 function render(){
   const T=fit(cTop), F=fit(cFront);
   // TOP VIEW
-  drawGrid(ctxT,T.w,T.h);
+  drawTopGrid(ctxT,T.w,T.h);
   drawCoverage(ctxT,T.w,T.h);   // speaker footprints, behind the latch lines
   // latch lines (from the effective, effect-modulated position)
   state.objects.forEach(o=>{ if(o.visible===false) return;
@@ -458,8 +514,10 @@ function render(){
   state.objects.forEach(o=>{ if(o.visible===false) return;
     if(o.effect) drawFxPath(ctxT,o,T.w,T.h);
     const p=effPos(o); const [ox,oy]=topXY(p.x,p.y,T.w,T.h), sel=state.selObjs.includes(o.id);
+    ctxT.globalAlpha=depthAlpha(p);
     ctxT.beginPath(); ctxT.arc(ox,oy,sel?9:7,0,7); ctxT.fillStyle=o.color; ctxT.fill();
     if(sel){ ctxT.strokeStyle=o.id===state.selObj?'#fff':'#39c0ed'; ctxT.lineWidth=2; ctxT.stroke(); }
+    ctxT.globalAlpha=1;
     ctxT.fillStyle='#0c0f13'; ctxT.font='bold 9px sans-serif'; ctxT.textAlign='center'; ctxT.textBaseline='middle';
     ctxT.fillText((state.objects.indexOf(o)+1), ox, oy); ctxT.textAlign='start'; ctxT.textBaseline='alphabetic';
   });
@@ -476,8 +534,10 @@ function render(){
   });
   state.speakers.forEach(s=>{ const [sx,sz]=frontXZ(s.x,s.z,F.w,F.h); drawSpeaker(ctxF,sx,sz,s.name, s.id===state.selSpk); });
   state.objects.forEach(o=>{ if(o.visible===false) return; const p=effPos(o); const [ox,oz]=frontXZ(p.x,p.z,F.w,F.h), sel=state.selObjs.includes(o.id);
+    ctxF.globalAlpha=depthAlpha(p);
     ctxF.beginPath(); ctxF.arc(ox,oz,sel?8:6,0,7); ctxF.fillStyle=o.color; ctxF.fill();
     if(sel){ ctxF.strokeStyle=o.id===state.selObj?'#fff':'#39c0ed'; ctxF.lineWidth=2; ctxF.stroke(); }
+    ctxF.globalAlpha=1;
   });
 }
 
@@ -493,8 +553,17 @@ function bindCanvas(cv, ctx, kind){
   cv.addEventListener('mousedown', e=>{
     const r=rect(), w=r.width, h=r.height, mx=e.clientX-r.left, my=e.clientY-r.top;
     if(state.mode==='room'){
-      const mapS = kind==='top' ? s=>topXY(s.x,s.y,w,h) : s=>frontXZ(s.x,s.z,w,h);
-      const s=pick(state.speakers,mx,my,mapS,w,h); if(s){ selectSpeaker(s.id); dragging={type:'spk',item:s}; }
+      let grabbed=false;
+      // a coverage handle on the selected speaker takes priority (top view only)
+      if(kind==='top' && state.covView!=='off'){
+        const sel=state.speakers.find(x=>x.id===state.selSpk);
+        if(sel) for(const hd of covHandles(sel)){ const [hx,hy]=topXY(hd.wx,hd.wy,w,h);
+          if(Math.hypot(hx-mx,hy-my)<10){ dragging={type:'cov',handle:hd.kind,item:sel}; grabbed=true; break; } }
+      }
+      if(!grabbed){
+        const mapS = kind==='top' ? s=>topXY(s.x,s.y,w,h) : s=>frontXZ(s.x,s.z,w,h);
+        const s=pick(state.speakers,mx,my,mapS,w,h); if(s){ selectSpeaker(s.id); dragging={type:'spk',item:s}; }
+      }
     } else {
       const mapO = kind==='top' ? o=>topXY(o.x,o.y,w,h) : o=>frontXZ(o.x,o.z,w,h);
       const o=pick(state.objects.filter(x=>x.visible!==false),mx,my,mapO,w,h); if(o){ selectObject(o.id); dragging={type:'obj',item:o}; activeDragId=o.id; }
@@ -505,6 +574,13 @@ function bindCanvas(cv, ctx, kind){
     if(!dragging) return;
     const r=rect(), w=r.width, h=r.height, mx=e.clientX-r.left, my=e.clientY-r.top;
     const it=dragging.item;
+    if(dragging.type==='cov'){                          // dragging a coverage handle (top view)
+      const [wx,wy]=topInv(mx,my,w,h), dx=wx-it.x, dy=wy-it.y, rr=Math.hypot(dx,dy), ang=Math.atan2(dy,dx);
+      if(dragging.handle==='throwaim' || dragging.handle==='cwangle'){ it.cw=Math.max(0.02,rr); it.ca=ang*180/Math.PI; }
+      else if(dragging.handle==='beam'){ const da=wrapPi(ang-(it.ca||0)*Math.PI/180); it.cbw=clamp(Math.abs(da)*2*180/Math.PI,5,350); }
+      else if(dragging.handle==='cd'){ const car=(it.ca||0)*Math.PI/180; it.cd=Math.max(0.02,Math.abs(-dx*Math.sin(car)+dy*Math.cos(car))); }
+      syncSpkEditor(); render(); pushRoom(); return;
+    }
     if(kind==='top'){ const [x,y]=topInv(mx,my,w,h); it.x=x; it.y=y; }
     else { const [x,z]=frontInv(mx,my,w,h); it.x=x; it.z=z; }
     if(dragging.type==='spk'){ syncSpkEditor(); pushRoom(); }
@@ -612,8 +688,9 @@ function syncSpkEditor(){ const s=state.speakers.find(x=>x.id===state.selSpk); c
   const U=mPerU(), H=state.room.h||4, wall=(s.type||0)===1;
   $('sType').value=s.type||0; $('sName').value=s.name;
   $('sX').value=(s.x*U).toFixed(2); $('sY').value=(s.y*U).toFixed(2); $('sZ').value=(s.z*H).toFixed(2); $('sLfe').checked=!!s.lfe;
-  $('covEllipse').style.display = wall?'none':'grid';
-  $('covWedge').style.display   = wall?'grid':'none';
+  $('covEllipse').style.display = wall?'none':'block';
+  $('covWedge').style.display   = wall?'block':'none';
+  $('covSub').textContent = (s.type||0)===1 ? 'Coverage — wedge' : (s.type||0)===2 ? 'Coverage — sub' : 'Coverage — footprint';
   $('sCW').value=((s.cw||0)*U).toFixed(2); $('sCD').value=((s.cd||0)*U).toFixed(2); $('sCA').value=Math.round(s.ca||0);
   $('sWThrow').value=((s.cw||0)*U).toFixed(2); $('sWBeam').value=Math.round(s.cbw||90); $('sWAim').value=Math.round(s.ca||0);
 }
@@ -665,7 +742,14 @@ async function pollLevels(){ if(!state.bridge.connected) return;
 
 //============================================================ wire up inputs
 function num(el){ const v=parseFloat(el.value); return isNaN(v)?0:v; }
-// object name is read-only — it mirrors the REAPER track name
+// object name — editable; renames the REAPER track via the Live script
+async function postRename(track,name){
+  try{ const r=await fetch(state.bridge.url+'/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:[{t:track,name}]})}); setConn(r.ok); return r.ok; }
+  catch(e){ setConn(false); return false; }
+}
+$('oName').oninput=e=>{ const o=cur(); if(!o)return; o.name=e.target.value; renderLists(); };
+$('oName').onchange=e=>{ const o=cur(); if(!o||!o.osc)return; postRename(o.osc.track, o.name);
+  const h=$('hdrSent'); if(h) h.textContent='renamed track '+o.osc.track+' → "'+o.name+'"'; };
 ['oX','oY','oZ','oG','oL'].forEach(id=>$(id).oninput=e=>{ const o=cur(); if(!o)return; const v=parseFloat(e.target.value);
   if(id==='oX')o.x=v; if(id==='oY')o.y=v; if(id==='oZ')o.z=v; if(id==='oG')o.gain=v; if(id==='oL')o.lfe=v;
   $(id+'v').textContent = id==='oX'||id==='oY'?xyToM(v) : id==='oZ'?zToM(v) : v.toFixed(2);
@@ -772,6 +856,7 @@ $('impFile').onchange=importLayout;
 ['rW','rD','rH'].forEach((id,k)=>$(id).oninput=e=>{ state.room[['w','d','h'][k]]=parseFloat(e.target.value)||1; renderAll(); });
 function syncRoomInputs(){ if(!$('rW'))return; $('rW').value=state.room.w; $('rD').value=state.room.d; $('rH').value=state.room.h; }
 $('preset').onchange=e=>{ const v=e.target.value; if(!v) return; v==='timemachine'?loadTimeMachine():loadPreset(v); e.target.value=''; };
+$('covView').onchange=e=>{ state.covView=e.target.value; render(); };
 function curS(){ return state.speakers.find(x=>x.id===state.selSpk); }
 $('sName').oninput=e=>{ const s=curS(); if(s){ s.name=e.target.value; renderLists(); } };
 ['sX','sY','sZ'].forEach(id=>$(id).oninput=e=>{ const s=curS(); if(!s)return; const v=parseFloat(e.target.value)||0;
@@ -791,6 +876,10 @@ function pushRoom(){ clearTimeout(roomTimer); roomTimer=setTimeout(()=>{
 },150); }
 function setMode(m){ state.mode=m; const b=$('modeRoom'); if(b) b.classList.toggle('on', m==='room'); render(); }
 $('modeRoom').onclick=()=>setMode(state.mode==='room'?'objects':'room');
+$('viewRadial').onclick=()=>{ state.topMode = state.topMode==='radial'?'cart':'radial';
+  $('viewRadial').classList.toggle('on', state.topMode==='radial');
+  $('topLabel').textContent = state.topMode==='radial' ? 'TOP · RADIAL — listener centred · FRONT up' : 'TOP — X (L/R) · Y (FRONT/REAR)';
+  render(); };
 
 // Pause FX — freeze every object effect at its base position. In the plug‑in we set Effect=Off
 // (so the audio stops moving) while keeping each object's effect/rate/depth/axis in the UI; resume
@@ -814,12 +903,14 @@ const focusToRoll  = p => 0.5 + (p/100)*3.5,  rollToFocus  = r => Math.round((r-
 const spreadToBlur = p => 0.01 + (p/100)*0.59, blurToSpread = b => Math.round((b-0.01)/0.59*100);
 $('pRoll').oninput=e=>{ const p=parseFloat(e.target.value); state.panner.rolloff=focusToRoll(p); $('pRollv').textContent=p+'%'; render(); pushLaw(); };
 $('pBlur').oninput=e=>{ const p=parseFloat(e.target.value); state.panner.blur=spreadToBlur(p); $('pBlurv').textContent=p+'%'; render(); pushLaw(); };
+$('pDepth').oninput=e=>{ const p=parseFloat(e.target.value); state.panner.depth=p/100; $('pDepthv').textContent=p+'%'; render(); pushLaw(); };
 let lawTimer=0;
 function pushLaw(){ clearTimeout(lawTimer); lawTimer=setTimeout(()=>{
   const targets=state.objects.filter(o=>o.osc), msgs=[], h=$('hdrSent');
   targets.forEach(o=>{ const m=o.osc;
     msgs.push({addr:`/track/${m.track}/fx/${m.fx}/fxparam/8/value`, value:state.panner.rolloff});
-    msgs.push({addr:`/track/${m.track}/fx/${m.fx}/fxparam/9/value`, value:state.panner.blur}); });
+    msgs.push({addr:`/track/${m.track}/fx/${m.fx}/fxparam/9/value`, value:state.panner.blur});
+    msgs.push({addr:`/track/${m.track}/fx/${m.fx}/fxparam/16/value`, value:state.panner.depth||0}); });
   if(!msgs.length){ if(h) h.textContent='law: no objects — add tk SurroundPanner to a track'; return; }
   postOSC(msgs).then(ok=>{ if(h) h.textContent=(ok?'✓ ':'✗ ')+`law → ${targets.length} obj · roll ${state.panner.rolloff.toFixed(1)} · blur ${state.panner.blur.toFixed(2)}`; });
 },120); }
@@ -828,6 +919,9 @@ function pushLaw(){ clearTimeout(lawTimer); lawTimer=setTimeout(()=>{
 
 // section collapse
 document.querySelectorAll('.sect h3').forEach(h=>{ if(h.style.cursor==='default')return; h.onclick=()=>h.parentElement.classList.toggle('collapsed'); });
+// the (i) in a header toggles that section's collapsible help text (without collapsing the section)
+document.querySelectorAll('.sect h3 .info').forEach(ic=>ic.onclick=e=>{ e.stopPropagation();
+  const sect=ic.closest('.sect'); sect.classList.toggle('help-on'); ic.classList.toggle('on', sect.classList.contains('help-on')); });
 
 // connection
 function setConn(ok){ state.bridge.connected=ok; $('connDot').classList.toggle('ok',ok); $('connTxt').textContent= ok?'bridge online':'bridge offline'; }
@@ -888,6 +982,7 @@ function applyImport(d){
   state.selObj=null; state.selObjs=[]; state.selSpk=null;
   $('pRoll').value=rollToFocus(state.panner.rolloff); $('pBlur').value=blurToSpread(state.panner.blur);
   $('pRollv').textContent=rollToFocus(state.panner.rolloff)+'%'; $('pBlurv').textContent=blurToSpread(state.panner.blur)+'%';
+  $('pDepth').value=Math.round((state.panner.depth||0)*100); $('pDepthv').textContent=Math.round((state.panner.depth||0)*100)+'%';
   renderAll(); pushRoom(); pushLaw();   // sync the law to every freshly-loaded object's plugin
 }
 // file import/export removed — the Live script keeps the UI in sync with REAPER
@@ -905,8 +1000,9 @@ async function watchTracks(){ if(!state.bridge.connected) return;   // live-upda
   const setSig=d.objects.map(o=>o.osc&&o.osc.track).join(',');
   if(setSig!==lastTrackSig){ lastTrackSig=setSig; applyImport(d); return; }
   let changed=false; const byT={}; d.objects.forEach(o=>{ if(o.osc) byT[o.osc.track]=o; });
+  const editingName = document.activeElement===$('oName');
   state.objects.forEach(o=>{ const s=byT[o.osc.track]; if(!s)return;
-    if(s.name!==o.name){ o.name=s.name; changed=true; }
+    if(s.name!==o.name && !(editingName && o.id===state.selObj)){ o.name=s.name; changed=true; }   // don't clobber a name being typed
     if(s.color && s.color!==o.color){ o.color=s.color; changed=true; }
     if((s.group||'')!==(o.group||'')){ o.group=s.group; changed=true; } });
   if(changed){ renderLists(); render(); }
@@ -993,6 +1089,7 @@ bindCanvas(cTop,ctxT,'top'); bindCanvas(cFront,ctxF,'front');
 window.addEventListener('resize', render);
 $('pRoll').value=rollToFocus(state.panner.rolloff); $('pRollv').textContent=rollToFocus(state.panner.rolloff)+'%';
 $('pBlur').value=blurToSpread(state.panner.blur); $('pBlurv').textContent=blurToSpread(state.panner.blur)+'%';
+$('pDepth').value=Math.round((state.panner.depth||0)*100); $('pDepthv').textContent=Math.round((state.panner.depth||0)*100)+'%';
 $('bRate').value=30;
 loadPreset('7.1.4');
 loadCues(); renderCues();

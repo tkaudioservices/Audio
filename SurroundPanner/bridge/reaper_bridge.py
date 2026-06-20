@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tkSurroundPanner bridge — tk Audio Services  ·  app v0.19.0
+tkSurroundPanner bridge — tk Audio Services  ·  app v0.21.0
 =========================================================
 
 Connects the web UI to the SurroundPanner_Live.lua script running inside REAPER,
@@ -29,7 +29,7 @@ import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = 7
+VERSION = 8
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_ROOT = os.path.dirname(HERE)
 
@@ -43,15 +43,16 @@ def _reaper_resource():
 
 # Shared with SurroundPanner_Live.lua, which uses reaper.GetResourcePath()/tkSurroundPanner
 IPC_DIR = os.path.join(_reaper_resource(), "tkSurroundPanner")
-CMDS = SESSION = ROOM = LEVELS = BAKE = AUTOMATION = ""
+CMDS = SESSION = ROOM = LEVELS = BAKE = AUTOMATION = RENAME = ""
 def _set_paths():
-    global CMDS, SESSION, ROOM, LEVELS, BAKE, AUTOMATION
+    global CMDS, SESSION, ROOM, LEVELS, BAKE, AUTOMATION, RENAME
     CMDS = os.path.join(IPC_DIR, "cmds.json")
     SESSION = os.path.join(IPC_DIR, "session.json")
     ROOM = os.path.join(IPC_DIR, "room.json")
     LEVELS = os.path.join(IPC_DIR, "levels.json")
     BAKE = os.path.join(IPC_DIR, "bake.json")
     AUTOMATION = os.path.join(IPC_DIR, "automation.json")
+    RENAME = os.path.join(IPC_DIR, "rename.json")
 _set_paths()
 
 ADDR_RE = re.compile(r"^/track/(\d+)/fx/(\d+)/fxparam/(\d+)/value$")
@@ -128,10 +129,28 @@ class AutomationBox:
         os.replace(tmp, AUTOMATION)
 
 
+class RenameBox:
+    """Writes rename.json — set REAPER track names from the UI. JSON-encoded for safe escaping."""
+    def __init__(self):
+        self.seq = 0
+        self.lock = threading.Lock()
+
+    def write(self, items):
+        arr = [{"t": int(it.get("t", 0)), "name": str(it.get("name", ""))} for it in items]
+        with self.lock:
+            self.seq += 1
+            payload = json.dumps({"seq": self.seq, "items": arr}, separators=(",", ":"))  # compact: matches the Lua parser
+        fd, tmp = tempfile.mkstemp(dir=IPC_DIR, suffix=".tmp")
+        with os.fdopen(fd, "w") as fh:
+            fh.write(payload)
+        os.replace(tmp, RENAME)
+
+
 class Handler(BaseHTTPRequestHandler):
     mailbox = None
     bakebox = None
     autobox = None
+    renamebox = None
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -205,6 +224,10 @@ class Handler(BaseHTTPRequestHandler):
                 d = json.loads(raw)
                 self.autobox.write(d.get("mode", "stop"), d.get("tracks", []))
                 return self._send(200, b'{"ok":true}', "application/json")
+            if path == "/rename":                      # set REAPER track names
+                d = json.loads(raw)
+                self.renamebox.write(d.get("items", []))
+                return self._send(200, b'{"ok":true}', "application/json")
             self._send(404, b"not found")
         except Exception as e:
             self._send(400, json.dumps({"ok": False, "error": str(e)}).encode())
@@ -225,6 +248,7 @@ def main():
     Handler.mailbox = Mailbox()
     Handler.bakebox = BakeBox()
     Handler.autobox = AutomationBox()
+    Handler.renamebox = RenameBox()
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
 
     print("=" * 64)

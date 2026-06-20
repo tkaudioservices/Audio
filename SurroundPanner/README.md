@@ -232,6 +232,7 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 | `levels.json` | REAPER → UI | `{"levels":[…]}` — per‑speaker peak, ~12×/sec. |
 | `bake.json` | UI → REAPER | `{"seq":N,"action":"bake"|"clear","items":[{t,x,y,z}…]}` — bake each object's effect motion (around base x/y/z) to X/Y/Z FX‑parameter envelopes over the time selection (or clear them). |
 | `automation.json` | UI → REAPER | `{"seq":N,"mode":"rec"|"stop","tracks":[…]}` — arm/disarm REAPER latch recording of object moves to X/Y/Z envelopes. |
+| `rename.json` | UI → REAPER | `{"seq":N,"items":[{t,name}…]}` — set REAPER track names from the UI (editing an object's Name). |
 
 **Param tags** (the `p` in `cmds.json`) → JSFX slider:
 
@@ -249,6 +250,7 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 | 13 | FX depth (`0…1`) | 9 | per object |
 | 14 | FX axis (`0…2`: X/Y/Z) | 10 | per object |
 | 15 | FX phase (`0…1` cycle offset) | 11 | per object |
+| 16 | Depth cue (`0…1`) | 12 | panner law (all objects) |
 
 **Shared memory** (`gmem` namespace `tkSurroundPanner`):
 
@@ -262,7 +264,8 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 
 **Bridge** — `python3 bridge/reaper_bridge.py [--port 9000] [--host 127.0.0.1] [--ipc-dir DIR]`.
 Endpoints: `GET /ping`, `/session`, `/levels`, static files; `POST /set` (object moves),
-`/room` (layout), `/bake` (bake/clear effect → envelopes), `/automation` (arm/disarm move recording).
+`/room` (layout), `/bake` (bake/clear effect → envelopes), `/automation` (arm/disarm move recording),
+`/rename` (set track names).
 
 ---
 

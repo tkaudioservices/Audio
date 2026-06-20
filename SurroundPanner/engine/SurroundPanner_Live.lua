@@ -1,5 +1,5 @@
 --[[
-  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.19.0
+  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.21.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -30,6 +30,7 @@ local ROOM   = IPC .. "/room.json"
 local LEVELS = IPC .. "/levels.json"
 local BAKE   = IPC .. "/bake.json"
 local AUTO   = IPC .. "/automation.json"
+local RENAME = IPC .. "/rename.json"
 local MATCH = "surroundpanner"   -- matches "JS: tk SurroundPanner", not "ReaSurroundPan"
 local MB     = 1000              -- gmem meter base, matches the JSFX (gmem[MB+ch] = peak per output)
 local MAXSPK = 16                -- matches the JSFX MAXOUT
@@ -123,6 +124,7 @@ local function applyCmds(insts)
       elseif pp == 13 then slider = 9; sval = val           -- FX depth (0..1)         per object
       elseif pp == 14 then slider = 10; sval = val          -- FX axis (0..2)          per object
       elseif pp == 15 then slider = 11; sval = val          -- FX phase (0..1)         per object
+      elseif pp == 16 then slider = 12; sval = val          -- Depth cue (0..1)        panner law (all objects)
       end
       if slider then setparam(inst.tr, inst.fx, slider, sval) end
     end
@@ -273,6 +275,22 @@ local function applyAutomation(insts)
   reaper.PreventUIRefresh(-1); reaper.UpdateArrange()
 end
 
+-- set REAPER track names from the UI -----------------------------
+-- rename.json = {"seq":N,"items":[{"t":T,"name":"..."}]}  (JSON-escaped by the bridge)
+local lastRenameSeq = -1
+local function applyRename(insts)
+  local s = readfile(RENAME); if not s then return end
+  local seq = tonumber(s:match('"seq":(%-?%d+)')); if not seq or seq == lastRenameSeq then return end
+  lastRenameSeq = seq
+  for t, name in s:gmatch('"t":(%d+),"name":"(.-)"') do   -- names rarely contain quotes; unescape \\ and \"
+    local inst = insts[tonumber(t)]
+    if inst then
+      local nm = name:gsub('\\"', '"'):gsub('\\\\', '\\')
+      reaper.GetSetMediaTrackInfo_String(inst.tr, "P_NAME", nm, true)
+    end
+  end
+end
+
 -- publish session.json (positions read straight from the sliders) -
 local function buildSession()
   local objs, tracks, stack = {}, {}, {}
@@ -374,6 +392,7 @@ local function loop()
     applyCmds(insts)
     applyBake(insts)
     applyAutomation(insts)
+    applyRename(insts)
     loadRoom()
     local now = reaper.time_precise()
     if now - lastLevels > 0.08 then lastLevels = now; writeLevels() end   -- ~12 Hz meters
