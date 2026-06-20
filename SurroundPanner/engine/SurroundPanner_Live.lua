@@ -1,5 +1,5 @@
 --[[
-  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.14.0
+  SurroundPanner_Live.lua  --  tk Audio Services   (JSFX edition)  ·  v0.15.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -130,7 +130,7 @@ end
 
 -- bake the per-object effect (Orbit/Oscillate/Drift) into X/Y/Z FX-parameter envelopes, so an
 -- offline render reads automation instead of running the live LFO (full-speed, not realtime).
--- bake.json = {"seq":N,"action":"bake"|"clear","tracks":[t,...]}. Mirrors the JSFX effect math.
+-- bake.json = {"seq":N,"action":"bake"|"clear","items":[{t,x,y,z},...]} (x/y/z = base). Mirrors the JSFX math.
 local lastBakeSeq = -1
 local BAKE_DT = 1/50          -- envelope resolution (s); plenty for the slow movement effects
 local BAKE_MAXPTS = 60000     -- safety cap on points per envelope
@@ -147,7 +147,7 @@ end
 
 -- write one track's effect motion to its X/Y/Z envelopes over the time selection (whole project
 -- if none), then turn the live Effect off. Returns true if it baked anything.
-local function bakeTrack(inst)
+local function bakeTrack(inst, bx, by, bz)
   local tr, fx = inst.tr, inst.fx
   local ft = math.floor(reaper.TrackFX_GetParam(tr, fx, 7) + 0.5)   -- Effect type
   if ft <= 0 or ft == 3 then return false end                      -- Off / Spread: nothing to bake to a position
@@ -155,7 +155,8 @@ local function bakeTrack(inst)
   local depth = reaper.TrackFX_GetParam(tr, fx, 9)
   local ax    = math.floor(reaper.TrackFX_GetParam(tr, fx, 10) + 0.5)
   local phase = reaper.TrackFX_GetParam(tr, fx, 11)                 -- per-object cycle offset
-  local bx, by, bz = reaper.TrackFX_GetParam(tr, fx, 0), reaper.TrackFX_GetParam(tr, fx, 1), reaper.TrackFX_GetParam(tr, fx, 2)
+  -- bx/by/bz: the object's BASE position, sent by the UI (the X/Y/Z sliders hold the live, moving
+  -- value while an effect runs, so we can't read the base off the plug-in)
   local t0, t1 = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
   if t1 <= t0 then t0 = 0; t1 = reaper.GetProjectLength(0) end
   if t1 <= t0 then return false end
@@ -216,11 +217,21 @@ local function applyBake(insts)
   local seq = tonumber(s:match('"seq":(%-?%d+)')); if not seq or seq == lastBakeSeq then return end
   lastBakeSeq = seq
   local action = s:match('"action":"(%a+)"') or "bake"
-  local tlist  = s:match('"tracks":%[([%d,%s]*)%]') or ""
+  local items  = s:match('"items":%[(.*)%]') or ""
   reaper.Undo_BeginBlock(); reaper.PreventUIRefresh(1)
-  for n in tlist:gmatch('(%d+)') do
-    local inst = insts[tonumber(n)]
-    if inst then if action == "clear" then clearBake(inst) else bakeTrack(inst) end end
+  for blk in items:gmatch('{[^}]*}') do
+    local t = tonumber(blk:match('"t":(%-?%d+)'))
+    local inst = t and insts[t]
+    if inst then
+      if action == "clear" then
+        clearBake(inst)
+      else
+        local bx = tonumber(blk:match('"x":(%-?[%d.]+)')) or 0
+        local by = tonumber(blk:match('"y":(%-?[%d.]+)')) or 0
+        local bz = tonumber(blk:match('"z":(%-?[%d.]+)')) or 0
+        bakeTrack(inst, bx, by, bz)
+      end
+    end
   end
   reaper.PreventUIRefresh(-1)
   reaper.Undo_EndBlock(action == "clear" and "tkSurroundPanner: clear baked effect"

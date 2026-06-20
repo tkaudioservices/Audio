@@ -86,7 +86,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.14.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.15.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -533,7 +533,8 @@ async function pollState(){ if(!state.bridge.connected) return;   // 'Follow' �
   if(!d.objects) return;
   const byTrack={}; d.objects.forEach(s=>{ if(s.osc) byTrack[s.osc.track]=s; });
   let changed=false;
-  state.objects.forEach(o=>{ if(o.id===activeDragId) return; const s=byTrack[o.osc.track]; if(!s) return;
+  state.objects.forEach(o=>{ if(o.id===activeDragId) return; if(o.effect>0) return;   // skip fx objects: their sliders carry the live motion, not the base
+    const s=byTrack[o.osc.track]; if(!s) return;
     if(typeof s.x==='number' && Math.abs(s.x-o.x)>1e-4){ o.x=s.x; changed=true; }
     if(typeof s.y==='number' && Math.abs(s.y-o.y)>1e-4){ o.y=s.y; changed=true; }
     if(typeof s.z==='number' && Math.abs(s.z-o.z)>1e-4){ o.z=s.z; changed=true; } });
@@ -663,24 +664,26 @@ $('oTest').onclick=testSweep;
 // write each object's effect motion to X/Y/Z automation and turn the live effect off, so an offline
 // render reads the envelopes at full speed. Clear removes the points and re-enables the live effect.
 const FXNAME=['off','orbit','oscillate','spread','drift'];
-async function postBake(action,tracks){
-  try{ const r=await fetch(state.bridge.url+'/bake',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,tracks})}); setConn(r.ok); return r.ok; }
+// items carry the object's BASE x/y/z so the Live script bakes around the true centre even if the
+// effect is mid-motion (the plug-in's X/Y/Z sliders hold the live position while an effect runs).
+async function postBake(action,items){
+  try{ const r=await fetch(state.bridge.url+'/bake',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,items})}); setConn(r.ok); return r.ok; }
   catch(e){ setConn(false); return false; }
 }
 async function bakeFx(clear){
   const set=curSet(), list=(set.length?set:[cur()].filter(Boolean)).filter(o=>o.osc);
   const h=$('hdrSent');
   if(!list.length){ alert('Select an object first.'); return; }
-  if(bridgeVersion<5){ alert('The running bridge is out of date — quit it and relaunch to use Bake.'); return; }
+  if(bridgeVersion<6){ alert("The running bridge is out of date — quit it and relaunch to use Bake."); return; }
   if(!clear){
     const bakeable=list.filter(o=>o.effect>0 && o.effect!==3);
     if(!bakeable.length){ alert('None of the selected objects has a bakeable effect (Orbit / Oscillate / Drift). Spread isn’t a position move.'); return; }
-    const ok=await postBake('bake', bakeable.map(o=>o.osc.track));
+    const ok=await postBake('bake', bakeable.map(o=>({t:o.osc.track, x:o.x, y:o.y, z:o.z})));
     if(ok){ bakeable.forEach(o=>{ o.baked={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis}; o.effect=0; });
       if(h) h.textContent='baked '+bakeable.length+' object(s) → X/Y/Z envelopes (render-ready)'; }
     else if(h) h.textContent='bake failed — is the bridge + Live script running?';
   } else {
-    const ok=await postBake('clear', list.map(o=>o.osc.track));
+    const ok=await postBake('clear', list.map(o=>({t:o.osc.track})));
     if(ok){ list.forEach(o=>{ if(o.baked){ o.effect=o.baked.effect; o.rate=o.baked.rate; o.depth=o.baked.depth; o.axis=o.baked.axis; o.baked=null; sendFx(o); } });
       if(h) h.textContent='cleared bake on '+list.length+' object(s)'; }
     else if(h) h.textContent='clear failed — is the bridge running?';
@@ -796,9 +799,10 @@ function applyImport(d){
   if(d.room) state.room=d.room;
   if(d.speakers) state.speakers=d.speakers;
   // the UI owns the effect settings (the session doesn't carry them) — keep them across a reload
-  const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis,phase:o.phase,baked:o.baked}; });
+  const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis,phase:o.phase,baked:o.baked,x:o.x,y:o.y,z:o.z}; });
   if(d.objects) state.objects=d.objects;
-  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; if(o.phase==null)o.phase=pf.phase; if(pf.baked) o.baked=pf.baked; } });
+  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; if(o.phase==null)o.phase=pf.phase; if(pf.baked) o.baked=pf.baked;
+    if(pf.effect>0){ o.x=pf.x; o.y=pf.y; o.z=pf.z; } } });   // keep the base for fx objects (their reported X/Y/Z is the live motion)
   state.panner=Object.assign(state.panner,d.panner||{});
   const n=state.objects.length||1;
   state.objects.forEach((o,i)=>{

@@ -3,6 +3,10 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.15.0
+- **The plug-in's X/Y/Z faders now move with the effect.** While an Orbit/Oscillate/Drift effect runs, the panner writes the live position back to its X/Y/Z sliders, so the faders animate in the plug-in (not just the web view). The **base** position is kept safe internally (`bx/by/bz`, captured from host/UI moves and persisted via `@serialize`), so an effect overwriting the sliders never loses your set position — dragging the object during an effect still re-bases it, and a project saved mid-effect restores correctly.
+- Under the hood this needed care so it doesn't fight the rest of the system: **Bake** now receives each object's base position from the UI (the sliders hold the live motion while an effect runs), and **Follow** no longer mirrors an fx object's live slider back as its base. Bridge protocol → 6 (bake payload carries base x/y/z).
+
 ## v0.14.0
 - **The plug-in now shows the movement.** The `tk SurroundPanner` UI has a live **mini top-view** (speakers + a moving object dot) and a **`now x/y/z`** readout that track the effect-modulated position while playing — so you can see an effect working in the plug-in, not just the browser.
 - **Phase offset + Stagger (complex group movement).** Each object effect has a **Phase** control (cycle offset), and with several objects selected, **Stagger phases** spreads the phase evenly across them — so a group orbits/oscillates in sequence (chase / flock) instead of in lockstep. One click → complex motion. Phase is baked too. New FX param tag 15 / JSFX `slider12`.
