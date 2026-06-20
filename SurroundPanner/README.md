@@ -290,6 +290,9 @@ Endpoints: `GET /ping`, `/session`, `/levels`, static files; `POST /set` (object
 - [x] **Stereo / binaural monitor** — `tk SurroundMonitor` folds the speaker bus to stereo for
       rehearsal/headphones: amplitude **Stereo fold** and a **parametric binaural** (ITD +
       head‑shadow) by speaker angle. (Future: measured HRIR/SOFA convolution; elevation cues.)
+- [x] **Cue snapshots** — capture / recall whole scenes (positions + gain + mute/solo + effects),
+      with timed **morph** between cues; persisted + export/import.
+- [x] **Solo / mute** per object, reflected in the preview and the plug‑in.
 - [ ] **Radial / spherical** room view (L‑ISA / KLANG style) alongside the X‑Y / X‑Z views.
 
 ---

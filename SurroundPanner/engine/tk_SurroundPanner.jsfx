@@ -1,4 +1,4 @@
-desc:tk SurroundPanner v0.16.0
+desc:tk SurroundPanner v0.17.0
 //  tk Audio Services — object panner for tkSurroundPanner
 //  2 in -> up to 16 out. DBAP, matching the web UI's latch-line view.
 //  Speaker layout is read live from shared memory (set by SurroundPanner_Live.lua

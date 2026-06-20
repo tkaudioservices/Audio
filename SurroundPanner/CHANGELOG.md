@@ -3,6 +3,10 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.17.0
+- **Cue snapshots.** A new *Cues* panel stores the whole scene — every object's position, gain, mute/solo and effect (keyed by REAPER track). **Capture** the current scene, click a cue to **recall** it, and with **Morph > 0** the objects glide to the cue over that time (eased). **U** updates a cue to the current scene. Cues persist in the browser and **Export/Import** to a file, so a show's looks move between machines. The big one for live/theatre.
+- **Per-object solo / mute.** **M** and **S** on each object in the list. Mute silences an object; Solo silences everything else. Drives both the preview (latch lines / meters drop out) and the plug-in (via each object's Gain), so it's audible. Captured in cues.
+
 ## v0.16.0
 - **New plug-in: `tk SurroundMonitor` — rehearsal / headphone fold-down.** Put it on a stereo monitor track fed by your immersive bus and it folds all the speaker channels to stereo, so you can work without the full rig. It reads the **same gmem speaker layout** as the panner, so every channel is folded by its speaker's real angle.
   - **Stereo fold** — constant-power amplitude fold by each speaker's azimuth (mild rear attenuation, C at −3 dB, optional LFE fold). Light and robust; the rehearsal downmix.

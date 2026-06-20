@@ -70,6 +70,9 @@
   .item .x{color:var(--dim);padding:0 2px}
   .item .x:hover{color:var(--bad)}
   .item .vis{flex:none;color:var(--accent);padding:0 4px;cursor:pointer}
+  .item .ms{flex:none;font-family:var(--mono);font-size:10px;width:16px;text-align:center;border-radius:3px;cursor:pointer;color:var(--dim);border:1px solid var(--line)}
+  .item .ms.mute.on{background:var(--warn);color:#1a1206;border-color:var(--warn)}
+  .item .ms.solo.on{background:var(--accent2);color:#06220c;border-color:var(--accent2)}
   .item.hidden{opacity:.45}
   .item.hidden .vis{color:var(--dim)}
   .grphdr{display:flex;justify-content:space-between;align-items:center;padding:7px 8px 4px;margin-top:6px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}
@@ -86,7 +89,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.16.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.17.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -127,6 +130,19 @@
           <div class="mini"><button class="btn" id="oTest">Test · sweep X</button></div>
           <div class="hint">Sweeps this object's X across the room so you can confirm the link — watch it move in REAPER. The track, FX and parameter mapping are filled in automatically by the Live script.</div>
         </div>
+      </div>
+    </div>
+
+    <!-- CUES -->
+    <div class="sect collapsed" id="sCues">
+      <h3>Cues <span class="chev">▾</span></h3>
+      <div class="body">
+        <div class="list" id="cueList"></div>
+        <div class="row"><label>Name</label><input type="text" id="cueName" placeholder="e.g. Verse 1 — wide"></div>
+        <div class="mini"><button class="btn primary" id="cueCapture">Capture cue</button><button class="btn" id="cueExport" title="Save cues to a file">Export</button><button class="btn" id="cueImport" title="Load cues from a file">Import</button></div>
+        <input type="file" id="cueFile" accept="application/json,.json" style="display:none">
+        <div class="row"><label>Morph</label><input type="range" id="cueMorph" min="0" max="20" step="0.5" value="0"><span class="val" id="cueMorphv">0 s</span></div>
+        <div class="hint">A cue stores every object's position, gain, mute/solo and effect. Click a cue to recall it; with <b>Morph &gt; 0</b> the objects glide there over that time. <span class="kbd">U</span> updates a cue to the current scene. Cues are saved in this browser; Export/Import to move them between machines.</div>
       </div>
     </div>
 
@@ -230,7 +246,8 @@ let state = {
   panner:{rolloff:2.0, blur:0.10, threshold:0.02},   // threshold: fixed faint-line hide (no UI control)
   bridge:{url:"http://localhost:9000", connected:false, rate:30},
   tracks:[],
-  selObj:null, selObjs:[], selSpk:null, mode:"objects", fxPaused:false
+  selObj:null, selObjs:[], selSpk:null, mode:"objects", fxPaused:false,
+  cues:[], selCue:null
 };
 let activeDragId=null;   // object id being dragged — pollState won't overwrite it
 
@@ -310,8 +327,12 @@ function computeGains(obj){
   });
   const sumSq = raw.reduce((a,g)=>a+g*g,0);
   const norm = Math.sqrt(sumSq)||1;
-  return raw.map(g=>(g/norm)*obj.gain);
+  return raw.map(g=>(g/norm)*effGain(obj));
 }
+// Effective gain = base gain, silenced by mute or by another object being soloed. Drives both the
+// preview (latch lines / meters) and what we send to the plug-in's Gain param.
+function effGain(o){ const anySolo=state.objects.some(x=>x.solo); return (o.mute || (anySolo && !o.solo)) ? 0 : o.gain; }
+function sendAllGains(){ state.objects.forEach(o=>{ if(o.osc) sendObject(o,'g'); }); }   // solo/mute affects every object
 
 //============================================================ effects engine (preview)
 // The effect runs for real in the JSFX (so it renders); this mirrors the motion in the view.
@@ -507,7 +528,7 @@ async function sendObject(o, axes){
   if(axes.includes('x')) add(m.px,(1-o.x)/2);   // X inverted — REAPER scene X is mirrored vs the view
   if(axes.includes('y')) add(m.py,(o.y+1)/2);
   if(axes.includes('z')) add(m.pz,o.z);
-  if(axes.includes('g')) add(m.pg,o.gain);
+  if(axes.includes('g')) add(m.pg,effGain(o));
   if(axes.includes('l')) add(m.pl,o.lfe||0);    // per-object LFE send (tag 10)
   if(!msgs.length) return;
   const ok=await postOSC(msgs); showSent((o.name?o.name+' → ':'')+msgs[0].addr,msgs[0].value,ok);
@@ -608,8 +629,11 @@ function renderLists(){
       ol.appendChild(h);
     }
     arr.forEach(([o,i])=>{ const d=document.createElement('div'); d.className='item'+(state.selObjs.includes(o.id)?' sel':'')+(o.visible===false?' hidden':'');
-      d.innerHTML=`<span class="sw" style="background:${o.color}"></span><span class="nm">${i+1}. ${o.name}</span><span class="meta">T${o.osc.track}</span><span class="vis" title="show / hide">${o.visible===false?'○':'●'}</span>`;
-      d.onclick=e=>{ if(e.target.classList.contains('vis')){ o.visible=(o.visible===false); renderLists(); render(); }
+      d.innerHTML=`<span class="sw" style="background:${o.color}"></span><span class="nm">${i+1}. ${o.name}</span><span class="ms mute${o.mute?' on':''}" title="mute">M</span><span class="ms solo${o.solo?' on':''}" title="solo">S</span><span class="vis" title="show / hide">${o.visible===false?'○':'●'}</span>`;
+      d.onclick=e=>{ const c=e.target.classList;
+        if(c.contains('vis')){ o.visible=(o.visible===false); renderLists(); render(); }
+        else if(c.contains('mute')){ o.mute=!o.mute; sendAllGains(); renderLists(); render(); }
+        else if(c.contains('solo')){ o.solo=!o.solo; sendAllGains(); renderLists(); render(); }
         else selectObject(o.id, (e.metaKey||e.ctrlKey)?'toggle':e.shiftKey?'range':undefined); };
       ol.appendChild(d); });
   });
@@ -817,6 +841,8 @@ function applyImport(d){
     if(typeof o.depth!=='number') o.depth=0.3;
     if(typeof o.axis!=='number') o.axis=0;
     if(typeof o.phase!=='number') o.phase=0;
+    if(typeof o.mute!=='boolean') o.mute=false;
+    if(typeof o.solo!=='boolean') o.solo=false;
     if(!o.color) o.color=PALETTE[i%PALETTE.length];
     if(!o.osc) o.osc={track:i+1,fx:1,px:4,py:5,pz:6,pg:7,pl:10,pe:11,pr:12,pd:13,pa:14,pph:15};   // X/Y/Z/Gain/LFE + effect tags
     if(o.osc.pl==null) o.osc.pl=10;                                  // older Live scripts omit these
@@ -879,6 +905,66 @@ async function autoStart(){
   setInterval(pollLevels, 80);      // ~12 Hz output meters
 }
 
+//============================================================ cues (scene snapshots)
+// A cue stores every object's full state keyed by REAPER track, so it maps back regardless of order.
+// Recall sets the objects (instantly, or glides them over a Morph time). Saved in localStorage.
+const CUE_KEY='tkSurroundPanner.cues';
+function snapshot(){ const data={}; state.objects.forEach(o=>{ if(o.osc) data[o.osc.track]={
+  x:o.x, y:o.y, z:o.z, gain:o.gain, lfe:o.lfe||0, mute:!!o.mute, solo:!!o.solo,
+  effect:o.effect||0, rate:o.rate==null?0.3:o.rate, depth:o.depth==null?0.3:o.depth, axis:o.axis||0, phase:o.phase||0 }; });
+  return data; }
+function persistCues(){ try{ localStorage.setItem(CUE_KEY, JSON.stringify(state.cues)); }catch(e){} }
+function loadCues(){ try{ const s=localStorage.getItem(CUE_KEY); if(s){ const a=JSON.parse(s); if(Array.isArray(a)) state.cues=a; } }catch(e){} }
+function captureCue(){ const name=(($('cueName')&&$('cueName').value)||'').trim()||('Cue '+(state.cues.length+1));
+  const cue={id:uid(), name, data:snapshot()}; state.cues.push(cue); state.selCue=cue.id;
+  if($('cueName')) $('cueName').value=''; persistCues(); renderCues();
+  const h=$('hdrSent'); if(h) h.textContent='captured cue "'+name+'" · '+Object.keys(cue.data).length+' objects'; }
+function updateCue(id){ const c=state.cues.find(x=>x.id===id); if(!c) return; c.data=snapshot(); persistCues(); renderCues();
+  const h=$('hdrSent'); if(h) h.textContent='updated cue "'+c.name+'"'; }
+function delCue(id){ state.cues=state.cues.filter(x=>x.id!==id); if(state.selCue===id) state.selCue=null; persistCues(); renderCues(); }
+let morphAnim=null;
+function recallCue(cue, morphSec){
+  if(morphAnim){ cancelAnimationFrame(morphAnim); morphAnim=null; }
+  const targets=[]; state.objects.forEach(o=>{ const t=o.osc && cue.data[o.osc.track]; if(t) targets.push([o,t]); });
+  const applyDiscrete=()=>{ targets.forEach(([o,t])=>{ o.lfe=t.lfe; o.mute=!!t.mute; o.solo=!!t.solo;
+    o.effect=t.effect; o.rate=t.rate; o.depth=t.depth; o.axis=t.axis; o.phase=t.phase; if(o.osc) sendFx(o); }); sendAllGains(); };
+  if(!morphSec){
+    targets.forEach(([o,t])=>{ o.x=t.x; o.y=t.y; o.z=t.z; o.gain=t.gain; });
+    applyDiscrete(); targets.forEach(([o])=>{ if(o.osc) sendObject(o); });
+    syncObjEditor(); renderLists(); render(); updateFxAnim(); return;
+  }
+  const start=targets.map(([o,t])=>({o,t,fx:o.x,fy:o.y,fz:o.z,fg:o.gain})), t0=performance.now();
+  (function step(){ const k=Math.min(1,(performance.now()-t0)/(morphSec*1000)), e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+    start.forEach(s=>{ s.o.x=s.fx+(s.t.x-s.fx)*e; s.o.y=s.fy+(s.t.y-s.fy)*e; s.o.z=s.fz+(s.t.z-s.fz)*e; s.o.gain=s.fg+(s.t.gain-s.fg)*e; });
+    start.forEach(s=>{ if(s.o.osc) scheduleSend(s.o,'xyzg'); }); syncObjEditor(); render();
+    if(k<1){ morphAnim=requestAnimationFrame(step); }
+    else { morphAnim=null; applyDiscrete(); start.forEach(s=>{ if(s.o.osc) sendObject(s.o); }); renderLists(); updateFxAnim(); }
+  })();
+}
+function renderCues(){ const cl=$('cueList'); if(!cl) return; cl.innerHTML='';
+  if(!state.cues.length){ cl.innerHTML='<div class="hint" style="margin:0">No cues yet — Capture the current scene.</div>'; return; }
+  state.cues.forEach(c=>{ const d=document.createElement('div'); d.className='item'+(c.id===state.selCue?' sel':'');
+    d.innerHTML=`<span class="nm">${c.name}</span><span class="meta">${Object.keys(c.data).length} obj</span><span class="ms upd" title="update this cue to the current scene">U</span><span class="x" title="delete">✕</span>`;
+    d.onclick=e=>{ const cls=e.target.classList;
+      if(cls.contains('x')){ delCue(c.id); }
+      else if(cls.contains('upd')){ updateCue(c.id); }
+      else { state.selCue=c.id; renderCues(); recallCue(c, ($('cueMorph')?parseFloat($('cueMorph').value):0)||0); } };
+    cl.appendChild(d); });
+}
+function exportCues(){ const blob=new Blob([JSON.stringify({format:'tkSurroundPanner.cues',version:1,cues:state.cues},null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='show-cues.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+function importCues(e){ const f=e.target.files&&e.target.files[0]; if(!f) return; const rd=new FileReader();
+  rd.onload=()=>{ try{ const d=JSON.parse(rd.result); const arr=Array.isArray(d)?d:d.cues; if(!Array.isArray(arr)) throw new Error('no cues in file');
+      arr.forEach(c=>{ if(!c.id) c.id=uid(); if(!c.data) c.data={}; }); state.cues=arr; state.selCue=null; persistCues(); renderCues(); }
+    catch(err){ alert('Could not read that cues file: '+err.message); } };
+  rd.readAsText(f); e.target.value=''; }
+if($('cueCapture')){
+  $('cueCapture').onclick=captureCue;
+  $('cueMorph').oninput=e=>$('cueMorphv').textContent=(parseFloat(e.target.value)||0)+' s';
+  $('cueExport').onclick=exportCues; $('cueImport').onclick=()=>$('cueFile').click(); $('cueFile').onchange=importCues;
+}
+
 //============================================================ init
 bindCanvas(cTop,ctxT,'top'); bindCanvas(cFront,ctxF,'front');
 window.addEventListener('resize', render);
@@ -886,6 +972,7 @@ $('pRoll').value=rollToFocus(state.panner.rolloff); $('pRollv').textContent=roll
 $('pBlur').value=blurToSpread(state.panner.blur); $('pBlurv').textContent=blurToSpread(state.panner.blur)+'%';
 $('bRate').value=30;
 loadPreset('7.1.4');
+loadCues(); renderCues();
 render();
 autoStart();   // auto-connect to the bridge and load the live session + objects, if running
 </script>
