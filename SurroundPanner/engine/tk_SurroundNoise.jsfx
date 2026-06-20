@@ -1,4 +1,4 @@
-desc:tk SurroundNoise v0.15.0
+desc:tk SurroundNoise v0.16.0
 //  tk Audio Services — per-speaker pink-noise generator for tkSurroundPanner rig setup.
 //
 //  Put ONE instance on your immersive bus (the folder track the objects fold into). All the

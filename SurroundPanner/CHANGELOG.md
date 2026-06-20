@@ -3,6 +3,12 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.16.0
+- **New plug-in: `tk SurroundMonitor` — rehearsal / headphone fold-down.** Put it on a stereo monitor track fed by your immersive bus and it folds all the speaker channels to stereo, so you can work without the full rig. It reads the **same gmem speaker layout** as the panner, so every channel is folded by its speaker's real angle.
+  - **Stereo fold** — constant-power amplitude fold by each speaker's azimuth (mild rear attenuation, C at −3 dB, optional LFE fold). Light and robust; the rehearsal downmix.
+  - **Binaural** — parametric HRTF per channel: ITD (inter-aural delay) + head-shadow (ILD low-pass) from the speaker azimuth. Static per layout, so it renders at full speed too. (A measured HRIR/SOFA path is a future upgrade; this covers the dominant cues.)
+  - Controls: Mode, Output (dB), Width %, LFE drop/fold. Leaves the real speaker bus untouched (parallel monitor path). Added to both installers.
+
 ## v0.15.0
 - **The plug-in's X/Y/Z faders now move with the effect.** While an Orbit/Oscillate/Drift effect runs, the panner writes the live position back to its X/Y/Z sliders, so the faders animate in the plug-in (not just the web view). The **base** position is kept safe internally (`bx/by/bz`, captured from host/UI moves and persisted via `@serialize`), so an effect overwriting the sliders never loses your set position — dragging the object during an effect still re-bases it, and a project saved mid-effect restores correctly.
 - Under the hood this needed care so it doesn't fight the rest of the system: **Bake** now receives each object's base position from the UI (the sliders hold the live motion while an effect runs), and **Follow** no longer mirrors an fx object's live slider back as its base. Bridge protocol → 6 (bake payload carries base x/y/z).
