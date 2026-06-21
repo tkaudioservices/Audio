@@ -1,5 +1,5 @@
 --[[
-  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.26.0
+  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.27.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -409,14 +409,23 @@ end
 -- live output meters: peak per output channel, read straight from the panner via shared memory.
 -- Decoupled from bus routing, so the web meters match the in-plugin display exactly. Each JSFX
 -- instance maxes its peak into gmem[MB+ch]; we read then clear so each interval shows a fresh peak.
-local function writeLevels()
+local function writeLevels(insts)
   local n = roomCount; if n < 1 then n = 2 end
   local t = {}
   for c = 0, n - 1 do
     t[#t + 1] = string.format("%.4f", reaper.gmem_read(MB + c))
     reaper.gmem_write(MB + c, 0)
   end
-  writefile_atomic(LEVELS, '{"levels":[' .. table.concat(t, ",") .. ']}')
+  -- live X/Y/Z per track (the sliders): during envelope playback these follow the envelope (playhead-
+  -- locked), so the web view can track the plug-in smoothly without the slow 0.5 s session rebuild.
+  local p = {}
+  for tnum, inst in pairs(insts) do
+    p[#p + 1] = string.format('{"t":%d,"x":%.4f,"y":%.4f,"z":%.4f}', tnum,
+      reaper.TrackFX_GetParam(inst.tr, inst.fx, 0),
+      reaper.TrackFX_GetParam(inst.tr, inst.fx, 1),
+      reaper.TrackFX_GetParam(inst.tr, inst.fx, 2))
+  end
+  writefile_atomic(LEVELS, '{"levels":[' .. table.concat(t, ",") .. '],"pos":[' .. table.concat(p, ",") .. ']}')
 end
 
 -- main loop -------------------------------------------------------
@@ -434,7 +443,7 @@ local function loop()
     applyRename(insts)
     loadRoom()
     local now = reaper.time_precise()
-    if now - lastLevels > 0.08 then lastLevels = now; writeLevels() end   -- ~12 Hz meters
+    if now - lastLevels > 0.08 then lastLevels = now; writeLevels(insts) end   -- ~12 Hz meters + live positions
     if now - lastWrite > 0.5 then lastWrite = now; setChannels(insts); writefile_atomic(SESS, buildSession()) end
   end)
   if not ok then local lf = io.open(IPC .. "/live_error.log", "w"); if lf then lf:write(tostring(err)); lf:close() end end

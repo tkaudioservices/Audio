@@ -98,7 +98,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.26.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.27.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -239,7 +239,7 @@
         <div class="mini"><button class="btn primary" id="btnConnect">Connect / test</button><button class="btn" id="btnPull">Reload from REAPER</button></div>
         <div class="hint" id="connHint">In REAPER, run <span class="kbd">tkSurroundPanner.lua</span> and start the bridge. Objects load automatically and moves apply straight to REAPER — no OSC setup, no Import/Export.</div>
         <div class="row"><label>Send rate</label><input type="range" id="bRate" min="10" max="60" step="5"><span class="val" id="bRatev">30</span></div>
-        <div class="row"><label>Follow play</label><input type="checkbox" id="bFollow"><span class="hint" style="margin:0">show REAPER's live position in the view — effects, <b>baked</b> and <b>recorded</b> moves all animate as it plays (display only; doesn't change the base)</span></div>
+        <div class="row"><label>Track plug‑in</label><input type="checkbox" id="bFollow" checked><span class="hint" style="margin:0">the view follows the plug‑in's live X/Y/Z — <b>baked / recorded envelopes</b> animate locked to the playhead as REAPER plays, while a live <b>FX engine</b> shows its free‑running preview (display only; never changes the base). Untick to freeze the view.</span></div>
       </div>
     </div>
   </div>
@@ -274,9 +274,9 @@ let state = {
   bridge:{url:"http://localhost:9000", connected:false, rate:30},
   tracks:[],
   selObj:null, selObjs:[], selSpk:null, mode:"objects", fxPaused:false,
-  cues:[], selCue:null, recording:false, covView:"all", topMode:"cart", follow:false, userPresets:[]
+  cues:[], selCue:null, recording:false, covView:"all", topMode:"cart", follow:true, userPresets:[]
 };
-let activeDragId=null;   // object id being dragged — pollState won't overwrite it
+let activeDragId=null;   // object id being dragged — the live-position poll won't overwrite it
 
 //============================================================ presets (x:-1..1 L/R, y:-1..1 rear..front, z:0..1)
 // [name, x, y, z, lfe] — order = REAPER output-channel order (incl. LFE gap). Speaker #i drives channel i+1.
@@ -534,7 +534,7 @@ function render(){
   state.speakers.forEach(s=>{ const [sx,sy]=topXY(s.x,s.y,T.w,T.h); drawSpeaker(ctxT,sx,sy,s.name, s.id===state.selSpk); });
   // objects (drawn at the effective position, with the effect path behind)
   state.objects.forEach(o=>{ if(o.visible===false) return;
-    if(o.effect && !state.follow) drawFxPath(ctxT,o,T.w,T.h);
+    if(o.effect) drawFxPath(ctxT,o,T.w,T.h);   // generator path (free-running preview); envelope reads have no path
     const p=curPos(o); const [ox,oy]=topXY(p.x,p.y,T.w,T.h), sel=state.selObjs.includes(o.id);
     ctxT.globalAlpha=depthAlpha(p);
     ctxT.beginPath(); ctxT.arc(ox,oy,sel?9:7,0,7); ctxT.fillStyle=o.color; ctxT.fill();
@@ -645,21 +645,11 @@ async function sendFx(o){ if(!o.osc) return; const m=o.osc;
 async function sendRaw(addr,value){ const ok=await postOSC([{addr,value}]); showSent(addr,value,ok); }
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 //============================================================ follow play (display REAPER's live position)
-let followTimer=null;
+// Follow the plug-in's live position. The positions arrive on the 12 Hz levels channel (pollLevels),
+// so this just flips the flag; off = freeze the view to the base/preview.
 function setFollow(on){ state.follow=on;
-  if(on && !followTimer){ followTimer=setInterval(pollState,120); }
-  else if(!on && followTimer){ clearInterval(followTimer); followTimer=null; state.objects.forEach(o=>o.live=null); render(); } }
-// 'Follow play' reads the live X/Y/Z REAPER is outputting (effect / baked / recorded automation) and
-// shows the object there — display only, into o.live, so the base position is never touched.
-async function pollState(){ if(!state.bridge.connected) return;
-  let d; try{ const r=await fetch(state.bridge.url+'/session'); if(!r.ok)return; d=await r.json(); }catch(e){ return; }
-  if(!d.objects) return;
-  const byTrack={}; d.objects.forEach(s=>{ if(s.osc) byTrack[s.osc.track]=s; });
-  state.objects.forEach(o=>{ if(o.id===activeDragId){ o.live=null; return; }
-    const s=o.osc && byTrack[o.osc.track]; if(!s || typeof s.x!=='number') return;
-    o.live={x:s.x, y:(typeof s.y==='number'?s.y:o.y), z:(typeof s.z==='number'?s.z:o.z)}; });
-  render();
-}
+  if(!on){ state.objects.forEach(o=>o.live=null); }
+  render(); }
 
 //============================================================ object / speaker CRUD
 // objects are created by REAPER (one per track), not in the UI — see applyImport()
@@ -766,6 +756,16 @@ async function pollLevels(){ if(!state.bridge.connected) return;
   const lv=d.levels||[];
   meterFills.forEach((el,i)=>{ const v=lv[i]||0, p=dbPct(v);
     el.style.width=p+'%'; el.style.background = v>=0.99?'var(--bad)' : (p>80?'var(--warn)':'var(--accent2)'); });
+  // Track the plug-in's live X/Y/Z (12 Hz). For objects reading an envelope this is the playhead-locked
+  // automation; for a free-running generator the slider sits at the base, so curPos shows the preview instead.
+  if(state.follow && Array.isArray(d.pos)){
+    const byT={}; d.pos.forEach(s=>byT[s.t]=s);
+    let moved=false;
+    state.objects.forEach(o=>{ if(o.id===activeDragId){ o.live=null; return; }
+      const s=o.osc && byT[o.osc.track]; if(!s || typeof s.x!=='number') return;
+      o.live={x:s.x, y:s.y, z:s.z}; moved=true; });
+    if(moved) render();
+  }
 }
 
 //============================================================ wire up inputs

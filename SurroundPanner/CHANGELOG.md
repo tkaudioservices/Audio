@@ -3,6 +3,10 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.27.0
+- **The view now tracks the plug‑in automatically (live sync).** The web view follows the plug‑in's actual X/Y/Z, fed through the fast 12 Hz channel, so it **latches on load** and you can *see* what the plug‑in is doing: **reading an envelope** (baked/recorded) animates **locked to the playhead** as REAPER plays; a live **FX engine** shows its free‑running preview; **Enable/Disable env** and **Bake** visibly move the dot. (Previously this only happened if you manually ticked "Follow play".) The old toggle is now **Track plug‑in**, on by default — untick to freeze the view. Display only; it never changes the base.
+- **Movement model, confirmed:** the generator is **free‑running** (good for live performance), envelopes are **playhead‑locked** (standard automation). Bake captures the generator's shape into a playhead‑locked envelope.
+
 ## v0.26.0
 - **Envelopes are now bypassed, not just cleared (no more fighting).** Switching a baked/recorded object back to the FX engine used to only *clear* the automation points — the envelope lane stayed active, so REAPER kept driving X/Y/Z from the (now empty) envelope and fought the generator. The plug‑in now **bypasses** the envelope using REAPER's native active flag, so it's truly off without losing the move (and you can re‑enable it later).
 - **Three explicit movement modes per object: Follow FX · Enable env · Disable env.** *Follow FX* runs the generator **and bypasses the envelopes** so nothing fights it. *Enable env* un‑bypasses the X/Y/Z envelopes to read a baked/recorded move. *Disable env* bypasses them, holding the object's manual position. (Replaces the two‑way Follow envelopes/FX toggle.)
