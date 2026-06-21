@@ -36,13 +36,14 @@ alias is only a pointer, and removing one deletes only the pointer.
 ## Quick start
 1. Double-click **`Working Folders.command`**.
    (First time, macOS may block it: **right-click → Open → Open**.)
-2. Choose **5) First-time setup**. It creates the shelf, gives it a **gold
-   star icon** so it stands out, and reveals it in Finder. **Drag the “Working
-   Folders” folder into your Finder sidebar**, under *Favourites* (the section
-   just above *Locations*). You only do this once.
-3. Choose **6) Build the drag-&-drop app** to get a star-iconed
-   **“Add to Working Folders”** app in your `~/Applications` folder. Keep it in
-   your Dock (optional, but handy).
+2. Choose **5) First-time setup**. It creates the shelf, gives it the **system
+   line-art star icon** (see [The icon](#the-icon)) so it stands out, and
+   reveals it in Finder. **Drag the “Working Folders” folder into your Finder
+   sidebar**, under *Favourites* (the section just above *Locations*). You only
+   do this once.
+3. Choose **6) Build the drag-&-drop app** to get an
+   **“Add to Working Folders”** app (same line-art icon) in your `~/Applications`
+   folder. Keep it in your Dock (optional, but handy).
 
 That's it. From now on:
 
@@ -73,9 +74,33 @@ There are two separate "removes", depending on what you mean:
    *Locations* items like iCloud/Dropbox this way — those are managed by Finder
    and the apps themselves.)
 
-If you'd already pinned the shelf **before** it got its star icon, remove it
-from the sidebar and drag it back in (or just log out/in) so the sidebar picks
-up the new icon.
+If you'd already pinned the shelf **before** it got its icon, remove it from the
+sidebar and drag it back in (or just log out/in) so the sidebar picks up the new
+icon.
+
+## The icon
+It uses a **built-in Apple icon** — an [SF Symbol](https://developer.apple.com/sf-symbols/),
+the same line-art set the Finder sidebar itself uses — so it looks native rather
+than like a pasted-on logo. The default is the line-art **`star`**.
+
+Nothing is downloaded or committed: the symbol is **rendered on your Mac** at
+setup/build time (via the system Python + Cocoa) and tinted to your **accent
+colour**, so it stays readable in both light and dark sidebars.
+
+**Use a different symbol** — pick any name from the *SF Symbols* app (or Apple's
+gallery):
+```
+WORKING_FOLDERS_SYMBOL=folder        ./working-folders.sh setup       # set the shelf icon
+WORKING_FOLDERS_SYMBOL=folder.fill   ./working-folders.sh build-app   # and/or the app icon
+```
+Good ones to try: `star`, `star.fill`, `folder`, `folder.fill`, `tray.full`,
+`pin`, `bookmark`. (Or change the `ICON_SYMBOL` default near the top of
+`working-folders.sh`.)
+
+**Set the icon by hand** (if your macOS is older than 11, or you just prefer to):
+select the shelf folder → **⌘I** (Get Info) → drag any image onto the little
+icon top-left, or copy an icon from another Get Info window and paste with **⌘V**.
+The shelf works fine with no custom icon at all.
 
 ## Command line (for scripting / Terminal folk)
 ```
@@ -129,12 +154,10 @@ Want it on the Finder right-click menu too? It's a one-minute Automator job:
 Now right-click any folder → **Quick Actions → Add to Working Folders**.
 
 ## Files in this folder
-- `working-folders.sh` — the engine (menu + command line, bash + AppleScript)
+- `working-folders.sh` — the engine (menu + command line, bash + AppleScript).
+  Also renders the system SF Symbol for the icon, on your Mac, no assets shipped.
 - `Working Folders.command` — double-click launcher for the menu (macOS)
 - `droplet.applescript` — source for the drag-&-drop app (built by `build-app`)
-- `assets/` — the star icons (`working-folders-app.png`, `working-folders-folder.png`)
-  and `make_icons.py`, the Pillow script that draws them. The `.icns` for the app
-  is generated on your Mac at build time with the built-in `sips`/`iconutil`.
 - `README.md` — this file
 
 ## Notes / caveats

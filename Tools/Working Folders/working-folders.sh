@@ -30,6 +30,12 @@ HUB="${WORKING_FOLDERS_HUB:-$HOME/Working Folders}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="Add to Working Folders"
 
+# Which built-in Apple icon to use (an SF Symbol name — line art, rendered on
+# your Mac so nothing proprietary is shipped). Try others: folder, star.fill,
+# tray.full, pin, bookmark, folder.badge.gearshape.  Override per-run with
+# WORKING_FOLDERS_SYMBOL=folder ./working-folders.sh setup
+ICON_SYMBOL="${WORKING_FOLDERS_SYMBOL:-star}"
+
 if [ "$(uname)" != "Darwin" ]; then
   echo "Working Folders is macOS-only — it talks to Finder via AppleScript." >&2
   exit 1
@@ -110,20 +116,58 @@ make_icns() {
   return $rc
 }
 
-# Give a folder (or file) a custom icon, via the macOS system Python + Cocoa.
-# Best-effort: returns non-zero (and changes nothing) if it can't.  $1=png $2=path
-set_custom_icon() {
-  [ -f "$1" ] || return 1
-  /usr/bin/python3 - "$1" "$2" >/dev/null 2>&1 <<'PY'
+# Render a built-in Apple SF Symbol (line art) and either set it as a folder's
+# icon or write it to a PNG. Done with the macOS system Python + Cocoa, so no
+# Apple artwork is shipped — the current system symbol is drawn on this Mac.
+# Best-effort: returns non-zero (changing nothing) on anything older/missing.
+#   render_symbol folder <symbol> <px> <folder-path>
+#   render_symbol png    <symbol> <px> <out.png>
+render_symbol() {
+  /usr/bin/python3 - "$1" "$2" "$3" "$4" >/dev/null 2>&1 <<'PY'
 import sys
+mode, symbol, size, dest = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
 try:
-    from Cocoa import NSImage, NSWorkspace
+    from AppKit import (NSImage, NSWorkspace, NSColor, NSColorSpace, NSBezierPath,
+                        NSImageSymbolConfiguration, NSBitmapImageRep, NSGraphicsContext)
+    from Foundation import NSMakeRect, NSZeroRect
 except Exception:
-    sys.exit(1)
-img = NSImage.alloc().initWithContentsOfFile_(sys.argv[1])
-if img is None:
-    sys.exit(1)
-sys.exit(0 if NSWorkspace.sharedWorkspace().setIcon_forFile_options_(img, sys.argv[2], 0) else 1)
+    sys.exit(3)  # PyObjC / AppKit not available
+
+# the system line-art symbol (macOS 11+); None if the OS is older or the name is unknown
+base = NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbol, None)
+if base is None:
+    sys.exit(2)
+cfg = NSImageSymbolConfiguration.configurationWithPointSize_weight_scale_(200.0, 0.0, 3)
+sym = base.imageWithSymbolConfiguration_(cfg) or base
+
+# tint to the system accent colour so it stays visible in light AND dark sidebars
+try:
+    col = NSColor.controlAccentColor().colorUsingColorSpace_(NSColorSpace.sRGBColorSpace())
+    if col is None:
+        raise ValueError
+except Exception:
+    col = NSColor.colorWithSRGBRed_green_blue_alpha_(10/255.0, 132/255.0, 255/255.0, 1.0)
+
+canvas = NSImage.alloc().initWithSize_((size, size))
+canvas.lockFocus()
+s = sym.size()
+if s.width <= 0 or s.height <= 0:
+    canvas.unlockFocus(); sys.exit(2)
+box = size * 0.62
+scale = box / (s.width if s.width >= s.height else s.height)
+dw, dh = s.width * scale, s.height * scale
+sym.drawInRect_fromRect_operation_fraction_(
+    NSMakeRect((size - dw) / 2.0, (size - dh) / 2.0, dw, dh), NSZeroRect, 2, 1.0)  # 2 = sourceOver
+NSGraphicsContext.currentContext().setCompositingOperation_(5)  # 5 = sourceAtop -> recolour the glyph
+col.set()
+NSBezierPath.bezierPathWithRect_(NSMakeRect(0, 0, size, size)).fill()
+canvas.unlockFocus()
+
+if mode == "folder":
+    sys.exit(0 if NSWorkspace.sharedWorkspace().setIcon_forFile_options_(canvas, dest, 0) else 1)
+rep = NSBitmapImageRep.imageRepWithData_(canvas.TIFFRepresentation())
+data = rep.representationUsingType_properties_(4, {})  # 4 = PNG
+sys.exit(0 if data and data.writeToFile_atomically_(dest, True) else 1)
 PY
 }
 
@@ -192,9 +236,11 @@ cmd_open() {
 cmd_setup() {
   ensure_hub
   say "Created your shelf:  $HUB"
-  if [ -f "$SCRIPT_DIR/assets/working-folders-folder.png" ] \
-     && set_custom_icon "$SCRIPT_DIR/assets/working-folders-folder.png" "$HUB"; then
-    say "Gave the shelf a ★ star icon so it stands out in the sidebar."
+  if render_symbol folder "$ICON_SYMBOL" 512 "$HUB"; then
+    say "Gave the shelf the system “$ICON_SYMBOL” line-art icon so it stands out."
+  else
+    say "(Couldn't auto-apply the icon on this Mac — see “Set the icon by hand”"
+    say " in the README if you'd like one. The shelf still works fine without.)"
   fi
   say
   if command -v mysides >/dev/null 2>&1; then
@@ -226,11 +272,13 @@ cmd_build_app() {
   rm -rf "$app"
   if osacompile -o "$app" "$SCRIPT_DIR/droplet.applescript" 2>/dev/null; then
     say "Built the app:  $app"
-    if [ -f "$SCRIPT_DIR/assets/working-folders-app.png" ] \
-       && make_icns "$SCRIPT_DIR/assets/working-folders-app.png" "$app/Contents/Resources/applet.icns"; then
+    local iconpng; iconpng="$(mktemp -d)/icon.png"
+    if render_symbol png "$ICON_SYMBOL" 1024 "$iconpng" \
+       && make_icns "$iconpng" "$app/Contents/Resources/applet.icns"; then
       touch "$app"
-      say "Gave it the gold-star icon. ★"
+      say "Gave it the system “$ICON_SYMBOL” line-art icon."
     fi
+    rm -rf "$(dirname "$iconpng")"
     say
     say "Now you can DRAG any folder onto it to pin that folder to your shelf."
     say "Keep it in your Dock, or drag it onto a Finder window's toolbar, so a"
