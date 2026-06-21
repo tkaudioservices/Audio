@@ -1,7 +1,7 @@
-desc:tk SurroundPanner v0.23.0
+desc:tk SurroundPanner v0.24.0
 //  tk Audio Services — object panner for tkSurroundPanner
 //  2 in -> up to 16 out. DBAP, matching the web UI's latch-line view.
-//  Speaker layout is read live from shared memory (set by SurroundPanner_Live.lua
+//  Speaker layout is read live from shared memory (set by tkSurroundPanner.lua
 //  from the web UI's room editor); falls back to a built-in 7.1.4 if none is set.
 //  Speaker index i drives output channel i+1. A speaker flagged LFE is excluded from the
 //  positional pan and instead receives the per-object LFE send (a low-passed mono feed).

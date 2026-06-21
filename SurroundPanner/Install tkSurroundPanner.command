@@ -22,14 +22,14 @@ fi
 
 mkdir -p "$RES/Effects/tk"
 if cp engine/tk_SurroundPanner.jsfx engine/tk_SurroundNoise.jsfx engine/tk_SurroundMonitor.jsfx "$RES/Effects/tk/"; then
-  echo "  ✓ Installed  JS: tk SurroundPanner + tk SurroundNoise + tk SurroundMonitor  (v0.23.0)  →  Effects/tk/"
+  echo "  ✓ Installed  JS: tk SurroundPanner + tk SurroundNoise + tk SurroundMonitor  (v0.24.0)  →  Effects/tk/"
   echo
   echo "  In REAPER:"
   echo "   • Add  JS: tk SurroundPanner  (FX browser → tk) to each object track."
   echo "   • Add  JS: tk SurroundNoise  to your immersive bus (optional — for Speaker check)."
   echo "   • Add  JS: tk SurroundMonitor  to a stereo monitor track fed by the bus (rehearsal/headphone fold)."
   echo "   • Actions → Show action list → New action → Load ReaScript… → pick this repo's"
-  echo "     engine/SurroundPanner_Live.lua  and run it once (leave it running)."
+  echo "     engine/tkSurroundPanner.lua  and run it once (leave it running)."
   echo "   • Then use  Launch SurroundPanner.command  for the bridge + UI."
   echo
   echo "  Updating an open project? Re-add the FX (or restart REAPER) to refresh it."

@@ -3,6 +3,11 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.24.0
+- **Movement source toggle.** Each object now has an explicit **Follow envelopes ⇄ Follow FX engine** switch in the Objects panel — the read/generate choice the plug‑in honours, made visible. *Follow envelopes* turns the generator off so X/Y/Z obey manual moves or a baked/recorded automation envelope (and the view follows them on playback); *Follow FX engine* runs the built‑in generator and clears any bake first, so the two never fight. Picking it surfaces the Effect / Rate / Depth / Axis / Phase controls; *Follow envelopes* tucks them away with a short "reading automation" note.
+- **Objects panel tidy.** A **Movement** divider separates the positional + LFE controls from the motion section.
+- **Renamed the control script** from `SurroundPanner_Live.lua` to **`tkSurroundPanner.lua`** (dropped the leftover `_Live`). Re‑load it in REAPER's Actions list after updating.
+
 ## v0.23.0
 - **Fixed the effects engine (correctness).** The base position now stays **clean in the X/Y/Z sliders** — the effect modulates an internal position for the audio only and **no longer writes the moving value back into the sliders** (reverting v0.15's "faders move with the effect"). That write-back could corrupt the base, especially when a leftover bake envelope was also driving X/Y/Z, which is what caused: effects panning to the wrong side (left played right), an Oscillate that came out lopsided (right→centre instead of left↔right), and a Bake that didn't match what you heard. Live panning and the effect math were verified correct; this removes the thing that was throwing them off.
 - **Generator ⇄ automation, in harmony.** The plug-in is in **generate** mode when an Effect is selected and in **read** mode when it's Off (then X/Y/Z follow manual moves or a baked/recorded **envelope**). They're now mutually exclusive: turning an effect on **clears that object's bake first**, so the generator never fights the automation. **Bake** freezes the generator to an envelope and switches to read; **Clear bake(s)** removes it and restores the effect.

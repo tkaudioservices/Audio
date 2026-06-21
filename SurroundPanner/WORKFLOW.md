@@ -42,7 +42,7 @@ no setup script.
 ## 2 · Start the live link
 
 1. Actions → Show action list → Load ReaScript… → pick this repo's
-   `engine/SurroundPanner_Live.lua`. Run it once and **leave it running** (running the
+   `engine/tkSurroundPanner.lua`. Run it once and **leave it running** (running the
    action again stops it; the toolbar button shows on/off).
 2. Double‑click `Launch SurroundPanner.command` — it starts the bridge and opens the UI
    at <http://localhost:9000/>. The header shows **bridge online** once connected.
@@ -89,7 +89,7 @@ pass. (A binaural headphone render is on the roadmap — see `README.md`.)
 ## Not working? Quick checklist
 
 - **No objects / "no session"** — the Live action isn't running, or no track has the
-  plug‑in. Run `SurroundPanner_Live.lua` and add **JS: tk SurroundPanner** to a track.
+  plug‑in. Run `tkSurroundPanner.lua` and add **JS: tk SurroundPanner** to a track.
 - **Header not "bridge online"** — the bridge isn't running or the browser can't reach
   it. Re‑launch, and confirm the UI's Bridge URL is `http://localhost:9000`.
 - **Objects move on screen but not in REAPER** — re‑run the Live action; make sure the
