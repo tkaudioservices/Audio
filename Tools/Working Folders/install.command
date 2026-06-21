@@ -194,7 +194,7 @@ say "  Done. Here's where everything stands:"
 hr
 bash "$SUPPORT/working-folders.sh" doctor
 hr
-say "  • Look for the ★ in your menu bar, and “Working Folders” in the Finder"
+say "  • Look for the ★ in your menu bar, and 'Working Folders' in the Finder"
 say "    sidebar under Favourites. (If the sidebar didn't update, it will after"
 say "    the next Finder relaunch / login.)"
 say "  • The drag-&-drop app is in ~/Applications — keep it in your Dock if you like."

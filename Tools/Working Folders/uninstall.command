@@ -38,8 +38,8 @@ pkill -f "$SUPPORT/menubar.py" >/dev/null 2>&1 || true
 if command -v mysides >/dev/null 2>&1; then
   mysides remove "Working Folders" >/dev/null 2>&1 && say "• Unpinned the shelf from the sidebar."
 else
-  say "• Note: remove the “Working Folders” item from the Finder sidebar by"
-  say "  right-clicking it → “Remove from Sidebar” (Finder doesn't allow that"
+  say "• Note: remove the 'Working Folders' item from the Finder sidebar by"
+  say "  right-clicking it → 'Remove from Sidebar' (Finder doesn't allow that"
   say "  from a script)."
 fi
 
