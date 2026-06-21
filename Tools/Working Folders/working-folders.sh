@@ -20,7 +20,7 @@
 #   ./working-folders.sh remove           # take something off the shelf (interactive)
 #   ./working-folders.sh open             # open the shelf in Finder
 #   ./working-folders.sh setup            # create the shelf + pin it to the sidebar
-#   ./working-folders.sh build-app        # build the drag-&-drop app
+#   ./working-folders.sh refresh          # re-apply the sidebar star icon
 #
 # Change where the shelf lives:  export WORKING_FOLDERS_HUB="$HOME/.../Shelf"
 
@@ -29,7 +29,6 @@
 
 HUB="${WORKING_FOLDERS_HUB:-$HOME/Working Folders}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_NAME="Add to Working Folders"
 
 # Which built-in Apple icon to use (an SF Symbol name — line art, rendered on
 # your Mac so nothing proprietary is shipped). Try others: folder, star.fill,
@@ -111,20 +110,6 @@ tell application "Finder"
     end try
 end tell
 OSA
-}
-
-# Build an .icns from a PNG using macOS built-ins.  $1=source png  $2=dest icns
-make_icns() {
-  command -v sips >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1 || return 1
-  local src="$1" out="$2" work iconset s rc
-  work="$(mktemp -d)"; iconset="$work/icon.iconset"; mkdir -p "$iconset"
-  for s in 16 32 128 256 512; do
-    sips -z "$s" "$s" "$src" --out "$iconset/icon_${s}x${s}.png" >/dev/null 2>&1
-    sips -z "$((s * 2))" "$((s * 2))" "$src" --out "$iconset/icon_${s}x${s}@2x.png" >/dev/null 2>&1
-  done
-  iconutil -c icns "$iconset" -o "$out" >/dev/null 2>&1; rc=$?
-  rm -rf "$work"
-  return $rc
 }
 
 # Render a built-in Apple SF Symbol (line art) and either set it as a folder's
@@ -259,8 +244,9 @@ cmd_setup() {
     local url="file://$(printf '%s' "$HUB" | sed 's/ /%20/g')/"
     mysides remove "Working Folders" >/dev/null 2>&1   # avoid a stale duplicate
     mysides add "Working Folders" "$url" >/dev/null 2>&1
-    killall Finder >/dev/null 2>&1                      # refresh the sidebar now
     mysides list 2>/dev/null | grep -qi "Working Folders" && pinned="yes"
+    killall Finder >/dev/null 2>&1            # bounce Finder + the sidebar's
+    killall sharedfilelistd >/dev/null 2>&1   # icon cache so the star shows
   fi
   if [ "$pinned" = "yes" ]; then
     say "Pinned 'Working Folders' to your Finder sidebar (Favourites). ✓"
@@ -277,41 +263,34 @@ cmd_setup() {
   open -R "$HUB" 2>/dev/null || open "$HOME"
 }
 
-cmd_build_app() {
-  command -v osacompile >/dev/null 2>&1 || die "osacompile not found (it ships with macOS)."
-  [ -f "$SCRIPT_DIR/droplet.applescript" ] || die "droplet.applescript isn't next to this script."
-  local outdir="$HOME/Applications"
-  mkdir -p "$outdir"
-  local app="$outdir/$APP_NAME.app"
-  rm -rf "$app"
-  if osacompile -o "$app" "$SCRIPT_DIR/droplet.applescript" 2>/dev/null; then
-    say "Built the app:  $app"
-    local iconpng; iconpng="$(mktemp -d)/icon.png"
-    if render_symbol png "$ICON_SYMBOL" 1024 "$iconpng" \
-       && make_icns "$iconpng" "$app/Contents/Resources/applet.icns"; then
-      touch "$app"
-      say "Gave it the system '$ICON_SYMBOL' line-art icon."
-    fi
-    rm -rf "$(dirname "$iconpng")"
-    say
-    say "Now you can DRAG any folder onto it to pin that folder to your shelf."
-    say "Keep it in your Dock, or drag it onto a Finder window's toolbar, so a"
-    say "folder is one drag away from the shelf."
-    open -R "$app" 2>/dev/null || true
+# Re-apply the shelf's star icon and force the Finder sidebar to redraw it.
+# (The Favourites list caches the icon when pinned, so a later icon change
+# doesn't show until we re-pin and bounce Finder + sharedfilelistd.)
+cmd_refresh() {
+  ensure_hub
+  if render_symbol folder "$ICON_SYMBOL" 512 "$HUB"; then
+    say "Re-applied the system '$ICON_SYMBOL' icon to the shelf."
   else
-    die "build failed."
+    say "Couldn't render the icon — is PyObjC installed? Run 'doctor' to check."
   fi
+  if command -v mysides >/dev/null 2>&1; then
+    local url="file://$(printf '%s' "$HUB" | sed 's/ /%20/g')/"
+    mysides remove "Working Folders" >/dev/null 2>&1
+    mysides add "Working Folders" "$url" >/dev/null 2>&1
+  fi
+  killall Finder >/dev/null 2>&1
+  killall sharedfilelistd >/dev/null 2>&1   # the sidebar's icon cache lives here
+  say "Refreshed the sidebar — give it a second to redraw the star."
+  say "Still a plain folder afterwards? Tell me, and we'll dig further."
 }
 
 cmd_doctor() {
   local AG="com.tkaudioservices.workingfolders.menubar"
-  local app="$HOME/Applications/$APP_NAME.app"
   say "Working Folders — doctor"
   say "────────────────────────"
   say "macOS:          $(sw_vers -productVersion 2>/dev/null || echo '?')"
   say "shelf:          $HUB  ($(count_items) item(s))"
   say "shelf icon:     $([ -e "$HUB/$ICONFILE" ] && echo 'set' || echo 'none')"
-  say "drag-drop app:  $([ -d "$app" ] && echo 'present' || echo 'MISSING')"
   local line; line="$(launchctl list 2>/dev/null | grep "$AG")"
   if [ -n "$line" ]; then
     say "menu bar agent: loaded (pid $(printf '%s' "$line" | awk '{print $1}'), last exit $(printf '%s' "$line" | awk '{print $2}'))"
@@ -344,7 +323,7 @@ Dropbox never gets to mangle it.
 Day to day
 ----------
   • Add what you're on: open the folder in Finder, then "Add the folder I'm
-    looking at" (or drag it onto the drag-&-drop app).
+    looking at" (or use the ★ menu bar app).
   • Jump to it: click "Working Folders" in the Finder sidebar, double-click.
   • Done with it: "Remove a folder from the shelf" — deletes only the shortcut,
     never the real folder or its files.
@@ -368,7 +347,7 @@ cmd_menu() {
     say "  3) List what's on the shelf"
     say "  4) Take a folder off the shelf"
     say "  5) First-time setup (create shelf + pin to the sidebar)"
-    say "  6) Build the drag-&-drop app ('$APP_NAME')"
+    say "  6) Refresh the sidebar star icon"
     say "  d) Check everything is working (doctor)"
     say "  h) Help / what is this"
     say "  q) Quit"
@@ -381,7 +360,7 @@ cmd_menu() {
       3) cmd_list; pause ;;
       4) cmd_remove; pause ;;
       5) cmd_setup; pause ;;
-      6) cmd_build_app; pause ;;
+      6) cmd_refresh; pause ;;
       d | D) cmd_doctor; pause ;;
       h | H | "help") show_help; pause ;;
       q | Q | "") say "Bye."; break ;;
@@ -402,10 +381,10 @@ main() {
     remove)         cmd_remove ;;
     open)           cmd_open ;;
     setup)          cmd_setup ;;
-    build-app)      cmd_build_app ;;
+    refresh)        cmd_refresh ;;
     doctor)         cmd_doctor ;;
     help | -h | --help) show_help ;;
-    *) die "unknown command: $cmd  (try: menu, add-current, add, list, remove, open, setup, build-app, doctor)" ;;
+    *) die "unknown command: $cmd  (try: menu, add-current, add, list, remove, open, setup, refresh, doctor)" ;;
   esac
 }
 

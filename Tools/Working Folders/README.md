@@ -39,27 +39,28 @@ alias is only a pointer, and removing one deletes only the pointer.
 ## Quick start — two ways
 **A) Install it properly (recommended).** Double-click **`install.command`**
 (first time: **right-click → Open → Open**). It copies the tool into
-`~/Library/Application Support`, builds the drag-&-drop app into `~/Applications`,
-creates and icons your shelf, and — if you let it add PyObjC — puts a **★ in your
-menu bar** that starts automatically at login. Re-runnable; undo any time with
+`~/Library/Application Support`, creates and stars your shelf, pins it to the
+Finder sidebar, and — if you let it add PyObjC — puts a **★ in your menu bar**
+that starts automatically at login. Re-runnable; undo any time with
 **`uninstall.command`**. See [Installed mode & the ★ menu bar app](#installed-mode--the--menu-bar-app).
 
 **B) Just run it from here (no install).** Double-click
-**`Working Folders.command`** → **5) First-time setup**, then **6) Build the
-drag-&-drop app**. Good for trying it out, or if you'd rather not install anything.
+**`Working Folders.command`** → **5) First-time setup**. Good for trying it out,
+or if you'd rather not install anything.
 
-**Either way**, do this once: when setup reveals the shelf, **drag the “Working
-Folders” folder into your Finder sidebar**, under *Favourites* (the section just
-above *Locations*). From then on it's one click away.
+**The one-time sidebar step:** setup pins the shelf automatically if `mysides`
+is installed; otherwise it opens the shelf so you can **drag “Working Folders”
+into the sidebar under *Favourites*** (just above *Locations*). Either way it's a
+one-time thing — from then on it's one click away.
 
 From now on:
 
 ## Daily use
-- **Pin what you're working on** — three ways, whichever suits you:
-  - Open the folder in Finder, run the menu, pick **1) Add the folder I'm
+- **Pin what you're working on** — whichever suits you:
+  - The **★ menu bar** → *Add the Folder I'm Looking At*.
+  - Or the menu (**`Working Folders.command`**) → **1) Add the folder I'm
     looking at**.
-  - **Drag the folder onto the “Add to Working Folders” app** (Dock or toolbar).
-  - Command line: `./working-folders.sh add "/path/to/a/folder"`
+  - Or command line: `./working-folders.sh add "/path/to/a/folder"`
 - **Jump to a project** — click **Working Folders** in the Finder sidebar, then
   double-click the project. No hierarchy to wade through.
 - **Take it off the shelf** when you're done — menu option **4**. This deletes
@@ -76,7 +77,10 @@ Running **`install.command`** gives you the always-there version:
   light/dark menu bars.
 - **A stable home.** The tool is copied to `~/Library/Application Support/Working
   Folders/`, so it no longer matters where this repo folder lives (e.g. inside
-  Dropbox). The drag-&-drop app goes in `~/Applications`.
+  Dropbox).
+- **A star in the sidebar.** Setup gives the shelf the same system `star` icon
+  and bounces Finder's sidebar cache so it shows (not a generic folder). If it
+  ever reverts to a plain folder, run **6) Refresh the sidebar star icon**.
 - **Login item.** A LaunchAgent at
   `~/Library/LaunchAgents/com.tkaudioservices.workingfolders.menubar.plist`.
 
@@ -92,10 +96,9 @@ on-demand. The menu bar app is the only always-running piece, and it exists only
 to give you the dropdown; the shelf itself needs no process at all.
 
 **Uninstall.** Double-click **`uninstall.command`** (a copy is kept in the
-Application Support folder). It stops and removes the menu bar app, its login
-item and the `~/Applications` app, and *asks* before touching your shelf. It
-can't unpin the sidebar item for you — do that with right-click → *Remove from
-Sidebar*.
+Application Support folder). It stops and removes the menu bar app and its login
+item, and *asks* before touching your shelf. It can't unpin the sidebar item for
+you — do that with right-click → *Remove from Sidebar*.
 
 ## Removing things — two different things
 There are two separate "removes", depending on what you mean:
@@ -127,10 +130,9 @@ setup/build time (via the system Python + Cocoa) and tinted to your **accent
 colour**, so it stays readable in both light and dark sidebars.
 
 **Use a different symbol** — pick any name from the *SF Symbols* app (or Apple's
-gallery):
+gallery), then refresh the sidebar icon:
 ```
-WORKING_FOLDERS_SYMBOL=folder        ./working-folders.sh setup       # set the shelf icon
-WORKING_FOLDERS_SYMBOL=folder.fill   ./working-folders.sh build-app   # and/or the app icon
+WORKING_FOLDERS_SYMBOL=folder.fill   ./working-folders.sh refresh
 ```
 Good ones to try: `star`, `star.fill`, `folder`, `folder.fill`, `tray.full`,
 `pin`, `bookmark`. (Or change the `ICON_SYMBOL` default near the top of
@@ -150,7 +152,8 @@ The shelf works fine with no custom icon at all.
 ./working-folders.sh remove          # take something off (interactive)
 ./working-folders.sh open            # open the shelf
 ./working-folders.sh setup           # create shelf + pin to sidebar
-./working-folders.sh build-app       # build the drag-&-drop app
+./working-folders.sh refresh         # re-apply the sidebar star icon
+./working-folders.sh doctor          # check every moving part
 ```
 Want the shelf somewhere else? Set `WORKING_FOLDERS_HUB`:
 ```
@@ -195,9 +198,8 @@ keeps the sidebar tidy — one item, not twenty.
   Also renders the system SF Symbol for the icon, on your Mac, no assets shipped.
 - `Working Folders.command` — double-click launcher for the menu (macOS)
 - `install.command` / `uninstall.command` — set up (or remove) the installed
-  mode: Application Support copy, `~/Applications` app, and the ★ menu bar login item
+  mode: Application Support copy and the ★ menu bar login item
 - `menubar.py` — the ★ menu bar app (PyObjC); started at login by the installer
-- `droplet.applescript` — source for the drag-&-drop app (built by `build-app`)
 - `README.md` — this file
 
 ## Notes / caveats
