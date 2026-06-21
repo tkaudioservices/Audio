@@ -1,5 +1,5 @@
 --[[
-  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.24.0
+  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.25.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.

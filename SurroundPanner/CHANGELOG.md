@@ -3,6 +3,9 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.25.0
+- **Fixed reversed / dropping pans on rooms with wall‑coverage speakers (the real one).** The directional **wall wedge** gated a speaker off whenever an object sat *at or near* it but "behind" its aim — so panning hard left could come out the **right** (and vice‑versa), a speaker could go **silent** right where it should be loudest, and the level **jumped** as the object crossed the gate while DBAP normalisation flooded the other speakers. (This — not the effects engine — was behind the left/right reversal, the lopsided Oscillate, and the "two things fighting" jumps; those all happen with the effect Off too.) The wedge now drops its angular gating in the speaker's **near field**, so it always covers what sits on it, while keeping its directionality at distance. Verified against the reported 8‑speaker room: front L→L, C→C, R→R, sides/rears correct, and **L/R perfectly symmetric**. Fixed identically in the JSFX and the web meters.
+
 ## v0.24.0
 - **Movement source toggle.** Each object now has an explicit **Follow envelopes ⇄ Follow FX engine** switch in the Objects panel — the read/generate choice the plug‑in honours, made visible. *Follow envelopes* turns the generator off so X/Y/Z obey manual moves or a baked/recorded automation envelope (and the view follows them on playback); *Follow FX engine* runs the built‑in generator and clears any bake first, so the two never fight. Picking it surfaces the Effect / Rate / Depth / Axis / Phase controls; *Follow envelopes* tucks them away with a short "reading automation" note.
 - **Objects panel tidy.** A **Movement** divider separates the positional + LFE controls from the motion section.

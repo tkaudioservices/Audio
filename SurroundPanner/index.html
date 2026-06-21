@@ -98,7 +98,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.24.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.25.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -334,7 +334,8 @@ function coverageWeight(s, ox, oy){
     const ca=(s.ca||0)*Math.PI/180, dx=ox-s.x, dy=oy-s.y, r=Math.hypot(dx,dy);
     const hw=Math.max(1,(s.cbw||90))*0.5*Math.PI/180;            // half beam width (rad)
     const da=wrapPi(Math.atan2(dy,dx)-ca);
-    const e=Math.max(Math.abs(da)/hw, r/thr);                    // 1 at the cone's angular OR radial edge
+    const near=Math.min(1, r/(thr*0.5));                         // near the apex, drop angular gating — the speaker still covers what sits on it
+    const e=Math.max((Math.abs(da)/hw)*near, r/thr);            // 1 at the cone's angular OR radial edge
     return e<=1 ? 1 : Math.max(0.001, Math.exp(-((e-1)**2)*4));
   }
   let cw=s.cw||0, cd=s.cd||0; if(!(cw>0 || cd>0)) return 1; cw=cw||cd; cd=cd||cw;   // ceiling/sub: ellipse (one value => circle)
