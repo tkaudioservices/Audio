@@ -48,9 +48,19 @@ pause() { printf '\nPress return to continue… '; read -r _ || true; }
 
 ensure_hub() { mkdir -p "$HUB" || die "couldn't create the shelf at: $HUB"; }
 
+# The classic custom-folder-icon file is literally named "Icon" + carriage
+# return; it lives in the shelf but is not a project, so we never list it.
+ICONFILE=$'Icon\r'
+
+# List the real shelf entries (skips dotfiles and the Icon file). Extra args
+# are passed through to find (e.g. -exec).
+shelf_find() {
+  find "$HUB" -mindepth 1 -maxdepth 1 ! -name '.*' ! -name "$ICONFILE" "$@" 2>/dev/null
+}
+
 count_items() {
   local n
-  n="$(find "$HUB" -mindepth 1 -maxdepth 1 ! -name '.*' 2>/dev/null | wc -l | tr -d ' ')"
+  n="$(shelf_find | wc -l | tr -d ' ')"
   printf '%s' "${n:-0}"
 }
 
@@ -198,13 +208,13 @@ cmd_list() {
     return
   fi
   say "On your shelf  ($HUB):"
-  find "$HUB" -mindepth 1 -maxdepth 1 ! -name '.*' -exec basename {} \; | sort | sed 's/^/  • /'
+  shelf_find -exec basename {} \; | sort | sed 's/^/  • /'
 }
 
 cmd_remove() {
   ensure_hub
   local items=() it
-  while IFS= read -r it; do items+=("$it"); done < <(find "$HUB" -mindepth 1 -maxdepth 1 ! -name '.*' | sort)
+  while IFS= read -r it; do items+=("$it"); done < <(shelf_find | sort)
   if [ "${#items[@]}" -eq 0 ]; then
     say "Nothing on the shelf to remove."
     return
@@ -245,8 +255,10 @@ cmd_setup() {
   say
   if command -v mysides >/dev/null 2>&1; then
     local url="file://$(printf '%s' "$HUB" | sed 's/ /%20/g')/"
+    mysides remove "Working Folders" >/dev/null 2>&1   # avoid a stale duplicate
     if mysides add "Working Folders" "$url" >/dev/null 2>&1; then
       say "Pinned it to your Finder sidebar (under Favourites) automatically. ✓"
+      killall Finder >/dev/null 2>&1   # nudge Finder so the sidebar refreshes now
     else
       say "Couldn't auto-pin — drag it into the sidebar by hand (steps below)."
     fi
@@ -287,6 +299,31 @@ cmd_build_app() {
   else
     die "build failed."
   fi
+}
+
+cmd_doctor() {
+  local AG="com.tkaudioservices.workingfolders.menubar"
+  local app="$HOME/Applications/$APP_NAME.app"
+  say "Working Folders — doctor"
+  say "────────────────────────"
+  say "macOS:          $(sw_vers -productVersion 2>/dev/null || echo '?')"
+  say "shelf:          $HUB  ($(count_items) item(s))"
+  say "shelf icon:     $([ -e "$HUB/$ICONFILE" ] && echo 'set' || echo 'none')"
+  say "drag-drop app:  $([ -d "$app" ] && echo 'present' || echo 'MISSING')"
+  local line; line="$(launchctl list 2>/dev/null | grep "$AG")"
+  if [ -n "$line" ]; then
+    say "menu bar agent: loaded (pid $(printf '%s' "$line" | awk '{print $1}'), last exit $(printf '%s' "$line" | awk '{print $2}'))"
+  else
+    say "menu bar agent: not loaded"
+  fi
+  say "PyObjC:         $(/usr/bin/python3 -c 'import AppKit' >/dev/null 2>&1 && echo 'OK' || echo 'missing')"
+  if command -v mysides >/dev/null 2>&1; then
+    say "mysides:        yes"
+    say "pinned to bar:  $(mysides list 2>/dev/null | grep -qi 'Working Folders' && echo 'yes' || echo 'no')"
+  else
+    say "mysides:        no  (needed to auto-pin the sidebar)"
+  fi
+  say "Homebrew:       $(command -v brew >/dev/null 2>&1 && echo 'yes' || echo 'no')"
 }
 
 show_help() {
@@ -330,6 +367,7 @@ cmd_menu() {
     say "  4) Take a folder off the shelf"
     say "  5) First-time setup (create shelf + pin to the sidebar)"
     say "  6) Build the drag-&-drop app (“$APP_NAME”)"
+    say "  d) Check everything is working (doctor)"
     say "  h) Help / what is this"
     say "  q) Quit"
     say
@@ -342,6 +380,7 @@ cmd_menu() {
       4) cmd_remove; pause ;;
       5) cmd_setup; pause ;;
       6) cmd_build_app; pause ;;
+      d | D) cmd_doctor; pause ;;
       h | H | "help") show_help; pause ;;
       q | Q | "") say "Bye."; break ;;
       *) ;;
@@ -362,8 +401,9 @@ main() {
     open)           cmd_open ;;
     setup)          cmd_setup ;;
     build-app)      cmd_build_app ;;
+    doctor)         cmd_doctor ;;
     help | -h | --help) show_help ;;
-    *) die "unknown command: $cmd  (try: menu, add-current, add, list, remove, open, setup, build-app)" ;;
+    *) die "unknown command: $cmd  (try: menu, add-current, add, list, remove, open, setup, build-app, doctor)" ;;
   esac
 }
 
