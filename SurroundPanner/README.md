@@ -28,7 +28,7 @@ and **[CHANGELOG.md](CHANGELOG.md)** for what changed when.
 | `engine/tk_SurroundPanner.jsfx` | **The panner.** A DBAP object panner (2 in → up to 16 out) whose sliders we drive directly, so external control is reliable. It reads the speaker layout live from REAPER shared memory, has a per‑object LFE send, and shows a compact value readout. Installed into REAPER's `Effects/tk`. |
 | `engine/tk_SurroundNoise.jsfx` | **Rig‑setup noise.** A pink‑noise generator for your immersive bus. The UI's *Speaker check* drives it to send noise to one speaker (or all), so you can line up, level‑match and verify the real rig. Publishes into the same meters as the panner. Installed alongside the panner. |
 | `engine/tk_SurroundMonitor.jsfx` | **Rehearsal / headphone fold.** Put on a stereo monitor track fed by the immersive bus; folds all speaker channels to stereo by each speaker's angle (read from the same shared layout). Two modes — **Stereo fold** (amplitude) and **Binaural** (parametric ITD + head‑shadow) — for working without the rig. Leaves the real speaker bus untouched. |
-| `engine/SurroundPanner_Live.lua` | **The live link.** Run once inside REAPER and leave it running. It drives every `tk SurroundPanner` instance from the UI, pushes the room layout into shared memory, auto‑grows track/bus channel counts, and publishes the scene + meters back to the UI. |
+| `engine/tkSurroundPanner.lua` | **The live link.** Run once inside REAPER and leave it running. It drives every `tk SurroundPanner` instance from the UI, pushes the room layout into shared memory, auto‑grows track/bus channel counts, and publishes the scene + meters back to the UI. |
 | `bridge/reaper_bridge.py` | Tiny stdlib HTTP bridge. Serves the UI and shuttles small JSON files between the browser and the Live script. No OSC, no extensions. |
 | `Install tkSurroundPanner.command` / `.bat` | Double‑click installer — copies the JSFX into REAPER's `Effects/tk`. Run once, and again after an update. |
 | `Launch SurroundPanner.command` / `.bat` | Double‑click launchers (macOS / Windows) that start the bridge and open the UI. |
@@ -48,7 +48,7 @@ room shape, the panning law, metering, and (later) binaural rendering.
    version so you can confirm.)
 2. **In REAPER:**
    - Add **JS: tk SurroundPanner** (FX browser → tk) to each object track.
-   - Actions → Load ReaScript → pick this repo's `engine/SurroundPanner_Live.lua`,
+   - Actions → Load ReaScript → pick this repo's `engine/tkSurroundPanner.lua`,
      run it once, and leave it running. (Running the action again stops it; the
      toolbar button reflects on/off.)
 3. **Launch** — double‑click `Launch SurroundPanner.command`. It starts the bridge and
@@ -70,7 +70,7 @@ refresh an instance in an already‑open project, and re‑run the Live action.
   Browser (index.html)
         │  HTTP  (localhost:9000)
         ▼
-  reaper_bridge.py  ──writes──►  cmds.json   ──►  SurroundPanner_Live.lua  ──►  tk SurroundPanner JSFX
+  reaper_bridge.py  ──writes──►  cmds.json   ──►  tkSurroundPanner.lua  ──►  tk SurroundPanner JSFX
         ▲                        room.json                 (in REAPER)              (sliders + gmem)
         └──────reads────────────  session.json  ◄──┘  publishes scene
                                    levels.json   ◄──┘  publishes meters

@@ -32,6 +32,9 @@
   .btn:hover{border-color:var(--accent);color:#fff}
   .btn.primary{background:var(--accent);border-color:var(--accent);color:#04222c;font-weight:600}
   .btn.toggle.on{background:var(--accent);border-color:var(--accent);color:#04222c}
+  .seg{display:flex;gap:6px;flex:1;min-width:0}
+  .seg .btn{flex:1;text-align:center;padding:6px 6px;white-space:nowrap}
+  .fxsep{margin:14px 0 8px;padding-top:11px;border-top:1px solid var(--line);font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim)}
   .status{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--dim)}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--bad)}
   .dot.ok{background:var(--accent2)}
@@ -95,7 +98,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.23.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.25.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -115,7 +118,7 @@
       <h3>Objects <span class="right"><span class="info" title="Show / hide help">i</span><span class="chev">▾</span></span></h3>
       <div class="body">
         <div class="list" id="objList"></div>
-        <div class="hint help" id="objHint">Objects are your REAPER tracks — they load automatically while <span class="kbd">SurroundPanner_Live.lua</span> is running. Editing the name here renames the REAPER track.</div>
+        <div class="hint help" id="objHint">Objects are your REAPER tracks — they load automatically while <span class="kbd">tkSurroundPanner.lua</span> is running. Editing the name here renames the REAPER track.</div>
         <div id="objEditor" style="display:none">
           <div class="row"><label>Name</label><input type="text" id="oName" title="Renames the REAPER track" placeholder="Track name"></div>
           <div class="row"><label>X · L/R</label><input type="range" id="oX" min="-1" max="1" step="0.001"><span class="val" id="oXv">0</span></div>
@@ -123,13 +126,19 @@
           <div class="row"><label>Z · Height</label><input type="range" id="oZ" min="0" max="1" step="0.001"><span class="val" id="oZv">0</span></div>
           <div class="row"><label>Gain</label><input type="range" id="oG" min="-60" max="0" step="0.5"><span class="val" id="oGv">0 dB</span></div>
           <div class="row"><label>LFE send</label><input type="range" id="oL" min="-60" max="0" step="0.5"><span class="val" id="oLv">−∞</span></div>
-          <div class="hint help" style="margin-top:8px"><span id="fxScope"></span>Effect — animates this object in the plug‑in, so it renders to file. Orbit / Oscillate / Drift move it; Spread widens it across more speakers. <span class="pill">Ctrl/Shift‑click the list to select several and shape them together.</span></div>
-          <div class="row"><label>Effect</label><select id="oFx"><option value="0">Off</option><option value="1">Orbit</option><option value="2">Oscillate</option><option value="3">Spread / size</option><option value="4">Random drift</option></select></div>
-          <div class="row"><label>Rate</label><input type="range" id="oFr" min="0" max="100" step="0.5"><span class="val" id="oFrv">3.3 s</span></div>
-          <div class="row"><label>Depth</label><input type="range" id="oFd" min="0" max="1" step="0.01"><span class="val" id="oFdv">0.3</span></div>
-          <div class="row"><label>Axis</label><select id="oFa" title="Oscillate axis"><option value="0">X · L/R</option><option value="1">Y · F/R</option><option value="2">Z · Height</option></select></div>
-          <div class="row"><label>Phase</label><input type="range" id="oFp" min="0" max="1" step="0.001" title="Offset where this object is in its cycle — stagger several for chasing / flocking motion"><span class="val" id="oFpv">0°</span></div>
-          <div class="mini"><button class="btn" id="oStagger" title="Spread the phase evenly across the selected objects, so they move in sequence">Stagger phases</button></div>
+
+          <div class="fxsep">Movement</div>
+          <div class="row"><label>Source</label><div class="seg"><button class="btn toggle" id="mEnv" title="Read X/Y/Z from REAPER automation — baked or recorded envelopes drive this object">Follow envelopes</button><button class="btn toggle" id="mFx" title="Generate motion with the built‑in FX engine (Orbit / Oscillate / Drift / Spread)">Follow FX engine</button></div></div>
+          <div class="hint help" id="fxEnvNote">Reading X/Y/Z <b>automation</b> — baked or recorded envelopes drive this object, and the view follows them while REAPER plays. Switch to <b>Follow FX engine</b> to generate live motion instead.</div>
+          <div id="fxEngineRows">
+            <div class="hint help" style="margin-top:8px"><span id="fxScope"></span>Effect — animates this object in the plug‑in, so it renders to file. Orbit / Oscillate / Drift move it; Spread widens it across more speakers. <span class="pill">Ctrl/Shift‑click the list to select several and shape them together.</span></div>
+            <div class="row"><label>Effect</label><select id="oFx"><option value="1">Orbit</option><option value="2">Oscillate</option><option value="3">Spread / size</option><option value="4">Random drift</option></select></div>
+            <div class="row"><label>Rate</label><input type="range" id="oFr" min="0" max="100" step="0.5"><span class="val" id="oFrv">3.3 s</span></div>
+            <div class="row"><label>Depth</label><input type="range" id="oFd" min="0" max="1" step="0.01"><span class="val" id="oFdv">0.3</span></div>
+            <div class="row"><label>Axis</label><select id="oFa" title="Oscillate axis"><option value="0">X · L/R</option><option value="1">Y · F/R</option><option value="2">Z · Height</option></select></div>
+            <div class="row"><label>Phase</label><input type="range" id="oFp" min="0" max="1" step="0.001" title="Offset where this object is in its cycle — stagger several for chasing / flocking motion"><span class="val" id="oFpv">0°</span></div>
+            <div class="mini"><button class="btn" id="oStagger" title="Spread the phase evenly across the selected objects, so they move in sequence">Stagger phases</button></div>
+          </div>
           <div class="mini"><button class="btn" id="oBake" title="Write the effect motion to X/Y/Z automation over the time selection (whole project if none)">Bake → envelopes</button><button class="btn" id="oClearBake" title="Clear baked automation in the time selection (or all), and re-enable the live effect">Clear bake(s)</button></div>
           <div class="hint help" id="bakeHint"><b>Make a time selection</b> and Bake drops the motion in between (no selection = whole project). Bakes the selected object(s)' Orbit / Oscillate / Drift to X/Y/Z automation and turns the live effect off, so an <b>offline render runs at full speed</b>. Re‑bake overwrites that range. <b>Clear bake(s)</b> removes the points in the selection (or all) and re‑enables the live effect — so you can read it, tweak the effect, and write a new move. (Spread isn't a position move, so it can't be baked.)</div>
           <div class="pill" id="bakeStatus" style="margin:2px 0 6px"></div>
@@ -227,7 +236,7 @@
       <div class="body">
         <div class="row"><label>Bridge URL</label><input type="text" id="bUrl" value="http://localhost:9000"></div>
         <div class="mini"><button class="btn primary" id="btnConnect">Connect / test</button><button class="btn" id="btnPull">Reload from REAPER</button></div>
-        <div class="hint" id="connHint">In REAPER, run <span class="kbd">SurroundPanner_Live.lua</span> and start the bridge. Objects load automatically and moves apply straight to REAPER — no OSC setup, no Import/Export.</div>
+        <div class="hint" id="connHint">In REAPER, run <span class="kbd">tkSurroundPanner.lua</span> and start the bridge. Objects load automatically and moves apply straight to REAPER — no OSC setup, no Import/Export.</div>
         <div class="row"><label>Send rate</label><input type="range" id="bRate" min="10" max="60" step="5"><span class="val" id="bRatev">30</span></div>
         <div class="row"><label>Follow play</label><input type="checkbox" id="bFollow"><span class="hint" style="margin:0">show REAPER's live position in the view — effects, <b>baked</b> and <b>recorded</b> moves all animate as it plays (display only; doesn't change the base)</span></div>
       </div>
@@ -325,7 +334,8 @@ function coverageWeight(s, ox, oy){
     const ca=(s.ca||0)*Math.PI/180, dx=ox-s.x, dy=oy-s.y, r=Math.hypot(dx,dy);
     const hw=Math.max(1,(s.cbw||90))*0.5*Math.PI/180;            // half beam width (rad)
     const da=wrapPi(Math.atan2(dy,dx)-ca);
-    const e=Math.max(Math.abs(da)/hw, r/thr);                    // 1 at the cone's angular OR radial edge
+    const near=Math.min(1, r/(thr*0.5));                         // near the apex, drop angular gating — the speaker still covers what sits on it
+    const e=Math.max((Math.abs(da)/hw)*near, r/thr);            // 1 at the cone's angular OR radial edge
     return e<=1 ? 1 : Math.max(0.001, Math.exp(-((e-1)**2)*4));
   }
   let cw=s.cw||0, cd=s.cd||0; if(!(cw>0 || cd>0)) return 1; cw=cw||cd; cd=cd||cw;   // ceiling/sub: ellipse (one value => circle)
@@ -683,7 +693,12 @@ function syncObjEditor(){
   $('oG').value=linToDb(o.gain); $('oGv').textContent=fmtDb(o.gain);
   $('oL').value=linToDb(o.lfe||0); $('oLv').textContent=fmtDb(o.lfe||0);
   const rate=o.rate==null?0.3:o.rate, depth=o.depth==null?0.3:o.depth;
-  $('oFx').value=o.effect||0; $('oFr').value=rateToPct(rate); $('oFrv').textContent=rateLabel(rate);
+  const useFx = (o.effect||0) > 0;                   // generator on ⇒ "Follow FX engine"; off ⇒ "Follow envelopes"
+  $('mFx').classList.toggle('on', useFx);
+  $('mEnv').classList.toggle('on', !useFx);
+  $('fxEngineRows').style.display = useFx ? 'block' : 'none';
+  $('fxEnvNote').style.display    = useFx ? 'none' : 'block';
+  $('oFx').value = useFx ? o.effect : (o.lastFx||1); $('oFr').value=rateToPct(rate); $('oFrv').textContent=rateLabel(rate);
   $('oFd').value=depth; $('oFdv').textContent=xyToM(depth); $('oFa').value=o.axis||0;
   $('oFp').value=o.phase||0; $('oFpv').textContent=Math.round((o.phase||0)*360)+'°';
   const n=state.selObjs.length; const fs=$('fxScope'); if(fs) fs.innerHTML = n>1 ? `<b style="color:var(--accent)">Applying to ${n} objects.</b> ` : '';
@@ -772,8 +787,17 @@ async function clearBakesFor(list){ const t=list.filter(o=>o.baked && o.osc); if
   const ok=await postBake('clear', t.map(o=>({t:o.osc.track}))); t.forEach(o=>o.baked=null); return ok; }
 $('oFx').onchange=async e=>{ const v=parseInt(e.target.value,10), now=performance.now();
   const list=curSet().length?curSet():[cur()].filter(Boolean);
-  if(v>0) await clearBakesFor(list);                // switch to the generator → drop any baked automation
-  applyFxToSel(o=>{ o.effect=v; o.fxT0=now; });     // anchor the preview phase to enable-time (the plug-in resets too)
+  await clearBakesFor(list);                         // switch to the generator → drop any baked automation
+  applyFxToSel(o=>{ o.effect=v; o.lastFx=v; o.fxT0=now; });  // remember the engine; anchor the preview phase
+  syncObjEditor(); };
+// Movement source toggle — the explicit read/generate switch the plug-in honours:
+//   Follow envelopes = effect Off, so X/Y/Z obey manual moves or a baked/recorded automation envelope.
+//   Follow FX engine = run the built-in generator (and clear any bake first, so the two never fight).
+$('mEnv').onclick=()=>{ applyFxToSel(o=>{ if(o.effect){ o.lastFx=o.effect; o.effect=0; } }); syncObjEditor(); };
+$('mFx').onclick=async()=>{ const now=performance.now();
+  const list=curSet().length?curSet():[cur()].filter(Boolean);
+  await clearBakesFor(list);
+  applyFxToSel(o=>{ if(!o.effect){ o.effect=o.lastFx||1; } o.fxT0=now; });
   syncObjEditor(); };
 $('oFa').onchange=e=>{ const v=parseInt(e.target.value,10); applyFxToSel(o=>o.axis=v); };
 $('oFr').oninput=e=>{ const r=pctToRate(parseFloat(e.target.value)); $('oFrv').textContent=rateLabel(r); applyFxToSel(o=>o.rate=r); };
@@ -1023,7 +1047,7 @@ function applyImport(d){
 let lastTrackSig='';
 const trackSig=d=>(d.objects||[]).map(o=>o.osc&&o.osc.track).join(',');
 async function pullSession(silent){ const base=$('bUrl').value.replace(/\/$/,'');
-  try{ const s=await fetch(base+'/session'); if(!s.ok){ if(!silent)alert('No session found — run SurroundPanner_Live.lua in REAPER first.'); return false; }
+  try{ const s=await fetch(base+'/session'); if(!s.ok){ if(!silent)alert('No session found — run tkSurroundPanner.lua in REAPER first.'); return false; }
     const d=await s.json(); applyImport(d); lastTrackSig=trackSig(d);
     $('connHint').textContent='Loaded session from REAPER — '+((d.objects||[]).length)+' object(s).'; return true; }
   catch(err){ if(!silent)alert('Could not reach the bridge.'); return false; } }
@@ -1052,7 +1076,7 @@ async function autoStart(){
   if(bridgeVersion<4){ $('connHint').innerHTML='⚠ The running bridge is out of date — quit that bridge window and relaunch, then reload this page.'; }
   else { const ok=await pullSession(true);
     $('connHint').textContent = ok ? 'Connected — session loaded from REAPER.'
-      : 'Connected, but no session yet — run SurroundPanner_Live.lua in REAPER and add the tk SurroundPanner plug‑in to a track.'; }
+      : 'Connected, but no session yet — run tkSurroundPanner.lua in REAPER and add the tk SurroundPanner plug‑in to a track.'; }
   setInterval(ping, 3000);   // keep the indicator honest if the bridge starts/stops later
   setInterval(watchTracks, 2000);   // auto-update when REAPER tracks are added/removed
   setInterval(pollLevels, 80);      // ~12 Hz output meters

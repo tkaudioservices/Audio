@@ -1,7 +1,7 @@
-desc:tk SurroundPanner v0.23.0
+desc:tk SurroundPanner v0.25.0
 //  tk Audio Services — object panner for tkSurroundPanner
 //  2 in -> up to 16 out. DBAP, matching the web UI's latch-line view.
-//  Speaker layout is read live from shared memory (set by SurroundPanner_Live.lua
+//  Speaker layout is read live from shared memory (set by tkSurroundPanner.lua
 //  from the web UI's room editor); falls back to a built-in 7.1.4 if none is set.
 //  Speaker index i drives output channel i+1. A speaker flagged LFE is excluded from the
 //  positional pan and instead receives the per-object LFE send (a low-passed mono feed).
@@ -85,7 +85,7 @@ function loadlayout() local(n i b) (
 // Coverage weight for speaker i at object (ox,oy): how well the object sits inside the speaker's
 // footprint (top-down X/Y). Ceiling/sub: ellipse, cw/cd half-axes, ca rotation°. Wall: a wedge/cone
 // thrown forward along ca — cw = throw distance, kcbw = beam width°. 0 => off (weight 1). Mirrors the UI.
-function coverage(i ox oy) local(dx dy ca cs sn lx ly e cx cy r da hw thr cwv cdv) (
+function coverage(i ox oy) local(dx dy ca cs sn lx ly e cx cy r da hw thr cwv cdv near) (
   ktype[i] == 1 ? (                                  // wall: directional wedge
     thr = kcw[i];
     thr > 0 ? (
@@ -93,7 +93,8 @@ function coverage(i ox oy) local(dx dy ca cs sn lx ly e cx cy r da hw thr cwv cd
       dx = ox-kx[i]; dy = oy-ky[i]; r = sqrt(dx*dx+dy*dy);
       hw = max(1, kcbw[i])*0.5*$pi/180;
       da = atan2(dy,dx) - ca; da = atan2(sin(da), cos(da));   // wrap to -pi..pi
-      e = max(abs(da)/hw, r/thr);                   // 1 at the cone's angular OR radial edge
+      near = min(1, r/(thr*0.5));                   // near the apex, drop angular gating — the speaker still covers what sits on it
+      e = max(abs(da)/hw*near, r/thr);              // 1 at the cone's angular OR radial edge
       e <= 1 ? 1 : max(0.001, exp(-sqr(e-1)*4));
     ) : 1;
   ) : (

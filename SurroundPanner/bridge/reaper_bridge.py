@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-tkSurroundPanner bridge — tk Audio Services  ·  app v0.23.0
+tkSurroundPanner bridge — tk Audio Services  ·  app v0.25.0
 =========================================================
 
-Connects the web UI to the SurroundPanner_Live.lua script running inside REAPER,
+Connects the web UI to the tkSurroundPanner.lua script running inside REAPER,
 using two small JSON files in REAPER's tkSurroundPanner folder (no OSC, no extensions):
 
   browser  --HTTP-->  this bridge  --writes cmds.json-->     Live.lua (REAPER)
@@ -14,7 +14,7 @@ track, and it publishes the current scene to session.json so the UI auto-loads
 with no Scan/Import step.
 
 Setup is now just:
-  1. In REAPER, run SurroundPanner_Live.lua  (Actions -> Load ReaScript). Leave it running.
+  1. In REAPER, run tkSurroundPanner.lua  (Actions -> Load ReaScript). Leave it running.
   2. Run this bridge:  python3 reaper_bridge.py
   3. Open http://localhost:9000/
 
@@ -41,7 +41,7 @@ def _reaper_resource():
         return os.path.join(os.environ.get("APPDATA", home), "REAPER")
     return os.path.join(home, ".config", "REAPER")
 
-# Shared with SurroundPanner_Live.lua, which uses reaper.GetResourcePath()/tkSurroundPanner
+# Shared with tkSurroundPanner.lua, which uses reaper.GetResourcePath()/tkSurroundPanner
 IPC_DIR = os.path.join(_reaper_resource(), "tkSurroundPanner")
 CMDS = SESSION = ROOM = LEVELS = BAKE = AUTOMATION = RENAME = ""
 def _set_paths():
@@ -180,7 +180,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/session":
             if os.path.isfile(SESSION):
                 return self._serve_file(SESSION, "application/json")
-            return self._send(404, b'{"error":"no session - run SurroundPanner_Live.lua in REAPER"}', "application/json")
+            return self._send(404, b'{"error":"no session - run tkSurroundPanner.lua in REAPER"}', "application/json")
         if path == "/levels":
             if os.path.isfile(LEVELS):
                 return self._serve_file(LEVELS, "application/json")
@@ -256,7 +256,7 @@ def main():
     print("=" * 64)
     print("  UI:       http://%s:%d/" % (args.host, args.port))
     print("  link:     %s" % IPC_DIR)
-    print("  REAPER:   run SurroundPanner_Live.lua and leave it running.")
+    print("  REAPER:   run tkSurroundPanner.lua and leave it running.")
     if not os.path.isfile(SESSION):
         print("  note:     session.json not found yet — start the Live script in REAPER.")
     print("  Ctrl-C to stop.")
