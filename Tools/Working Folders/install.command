@@ -44,21 +44,31 @@ chmod +x "$SUPPORT/working-folders.sh" "$SUPPORT/Working Folders.command" \
          "$SUPPORT/uninstall.command" 2>/dev/null
 say "• Installed to:  $SUPPORT"
 
-# 1b) make sure mysides is present — it's what pins the shelf to the sidebar --
+# 1b) optional: mysides pins the shelf to the sidebar automatically -----------
+# (mysides is a Homebrew *cask*, not a formula.) Without it, setup walks you
+# through a one-time drag instead — so this is purely a convenience.
 if command -v mysides >/dev/null 2>&1; then
-  say "• mysides already installed (for the Finder-sidebar pin)."
+  say "• mysides present — the sidebar pin will be automatic."
 elif command -v brew >/dev/null 2>&1; then
-  say "• Installing mysides via Homebrew (this is what pins the sidebar)…"
-  if brew list mysides >/dev/null 2>&1 || brew install mysides >/dev/null 2>&1; then
-    say "  mysides installed."
-  else
-    say "  Couldn't install mysides automatically — the sidebar pin will be a"
-    say "  one-time manual drag (setup will show you how)."
-  fi
+  say "The Finder-sidebar pin can be fully automatic if I install 'mysides' (a"
+  say "tiny Homebrew cask). Homebrew may ask for your Mac password. Skip it and"
+  say "the pin is just a one-time drag that setup walks you through."
+  printf 'Install mysides for automatic pinning? [y/N] '
+  read -r ans
+  case "$ans" in
+    y | Y | yes | YES)
+      brew install --cask mysides   # visible, so a password prompt can appear
+      hash -r 2>/dev/null
+      command -v mysides >/dev/null 2>&1 \
+        && say "• mysides installed." \
+        || say "• mysides didn't install — setup will guide the one-time drag."
+      ;;
+    *)
+      say "• Skipping mysides — setup will guide the one-time sidebar drag."
+      ;;
+  esac
 else
-  say "• No Homebrew found, so I can't auto-install mysides — the sidebar pin"
-  say "  will be a one-time manual drag (setup shows how). To get auto-pinning,"
-  say "  install Homebrew (brew.sh) or mysides (github.com/mosen/mysides)."
+  say "• No Homebrew, so the sidebar pin will be a one-time drag (setup shows how)."
 fi
 
 # 2) build the drag-&-drop app (into ~/Applications, with the star icon) -----

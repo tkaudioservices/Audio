@@ -253,24 +253,25 @@ cmd_setup() {
     say " in the README if you'd like one. The shelf still works fine without.)"
   fi
   say
+  local pinned=""
   if command -v mysides >/dev/null 2>&1; then
     local url="file://$(printf '%s' "$HUB" | sed 's/ /%20/g')/"
     mysides remove "Working Folders" >/dev/null 2>&1   # avoid a stale duplicate
-    if mysides add "Working Folders" "$url" >/dev/null 2>&1; then
-      say "Pinned it to your Finder sidebar (under Favourites) automatically. ✓"
-      killall Finder >/dev/null 2>&1   # nudge Finder so the sidebar refreshes now
-    else
-      say "Couldn't auto-pin — drag it into the sidebar by hand (steps below)."
-    fi
+    mysides add "Working Folders" "$url" >/dev/null 2>&1
+    killall Finder >/dev/null 2>&1                      # refresh the sidebar now
+    mysides list 2>/dev/null | grep -qi "Working Folders" && pinned="yes"
+  fi
+  if [ "$pinned" = "yes" ]; then
+    say "Pinned “Working Folders” to your Finder sidebar (Favourites). ✓"
+    say "Don't see it? Hover next to the word “Favourites” in the sidebar and"
+    say "click “Show” — macOS sometimes collapses that whole section."
   else
-    say "Now pin it to the Finder sidebar so it's always one click away:"
-    say "  1) A Finder window has opened with the shelf selected."
-    say "  2) Drag the “Working Folders” folder into the sidebar, dropping it"
-    say "     under “Favourites” (the section just above “Locations”)."
-    say
-    say "  Once it's there, clicking it shows every project you're working on."
-    say
-    say "  (Optional: 'brew install mysides' then re-run setup to auto-pin.)"
+    say "One-time step — pin the shelf to your sidebar (takes 3 seconds):"
+    say "  1) A Finder window has opened with “Working Folders” highlighted."
+    say "  2) Drag it into the sidebar, under “Favourites”."
+    say "     (No “Favourites” showing? Hover there and click “Show”.)"
+    command -v mysides >/dev/null 2>&1 \
+      || say "  (Or: 'brew install --cask mysides', then re-run setup, to automate it.)"
   fi
   open -R "$HUB" 2>/dev/null || open "$HOME"
 }

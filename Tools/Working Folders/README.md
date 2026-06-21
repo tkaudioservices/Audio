@@ -165,19 +165,30 @@ folders go in **Favourites**, the section right above it, which is exactly where
 this shelf sits. Functionally it's identical: a permanent, one-click item in the
 sidebar of every Finder window.
 
-## Optional: a real sidebar entry per folder (`mysides`)
-Prefer each project to be its **own** sidebar item rather than living inside the
-shelf? Install [`mysides`](https://github.com/mosen/mysides) (a small
-open-source Finder-sidebar CLI):
-```
-brew install mysides
-mysides add "Smith Wedding" "file:///Users/you/Dropbox/Clients/2026/Smith%20Wedding/"
-mysides remove "Smith Wedding"      # take it out again
-mysides list                        # see what's pinned
-```
-If `mysides` is installed, **setup** will also auto-pin the shelf for you
-instead of asking you to drag it. (The shelf approach is the default because it
-needs nothing extra and keeps the sidebar tidy — one item, not twenty.)
+## The sidebar pin (and `mysides`)
+Pinning the shelf to the sidebar is a **one-time** thing. Two ways:
+
+- **Automatic** — if [`mysides`](https://formulae.brew.sh/cask/mysides) is
+  installed, **setup** pins it for you and relaunches Finder. `mysides` is a
+  Homebrew **cask** (note `--cask`), and the installer offers to add it:
+  ```
+  brew install --cask mysides
+  ```
+- **Manual (no install)** — setup opens the shelf with it highlighted; just
+  **drag “Working Folders” into the sidebar under _Favourites_**. Three seconds,
+  once, done.
+
+setup **verifies** the pin actually took (mysides is an old tool and newer macOS
+can be fussy); if it didn't, it falls back to guiding the manual drag.
+
+> **Can't see Favourites / your pin?** macOS can collapse that section — hover
+> next to the word **Favourites** in the sidebar and click **Show**. Or
+> Finder → Settings → Sidebar to make sure Favourites is enabled.
+
+Want each project as its **own** sidebar item instead of inside the shelf?
+`mysides add "Smith Wedding" "file:///Users/you/Dropbox/Clients/2026/Smith%20Wedding/"`
+(and `mysides remove …`, `mysides list`). The shelf is the default because it
+keeps the sidebar tidy — one item, not twenty.
 
 ## Files in this folder
 - `working-folders.sh` — the engine (menu + command line, bash + AppleScript).
