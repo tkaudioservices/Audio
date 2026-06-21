@@ -36,10 +36,11 @@ alias is only a pointer, and removing one deletes only the pointer.
 ## Quick start
 1. Double-click **`Working Folders.command`**.
    (First time, macOS may block it: **right-click → Open → Open**.)
-2. Choose **5) First-time setup**. It creates the shelf and reveals it in
-   Finder. **Drag the “Working Folders” folder into your Finder sidebar**, under
-   *Favourites* (the section just above *Locations*). You only do this once.
-3. Choose **6) Build the drag-&-drop app** to get an
+2. Choose **5) First-time setup**. It creates the shelf, gives it a **gold
+   star icon** so it stands out, and reveals it in Finder. **Drag the “Working
+   Folders” folder into your Finder sidebar**, under *Favourites* (the section
+   just above *Locations*). You only do this once.
+3. Choose **6) Build the drag-&-drop app** to get a star-iconed
    **“Add to Working Folders”** app in your `~/Applications` folder. Keep it in
    your Dock (optional, but handy).
 
@@ -55,6 +56,26 @@ That's it. From now on:
   double-click the project. No hierarchy to wade through.
 - **Take it off the shelf** when you're done — menu option **4**. This deletes
   only the shortcut; the real folder and its files are untouched.
+
+## Removing things — two different things
+There are two separate "removes", depending on what you mean:
+
+1. **Stop a project showing up on the shelf** (the usual one). Menu option
+   **4) Take a folder off the shelf**, or `./working-folders.sh remove`, or just
+   open the shelf and **drag the alias to the Trash**. Either way you're only
+   deleting the *shortcut* — the real folder and everything in it is untouched.
+
+2. **Remove the shelf itself (or anything) from the Finder sidebar.** That's a
+   Finder thing, not this tool: **right-click the item in the sidebar →
+   “Remove from Sidebar”** (or just drag it out until you see the ✕). This only
+   *unpins* it — it doesn't delete the folder. Works for any sidebar entry,
+   including ones you no longer use under *Favourites*. (You can't remove the
+   *Locations* items like iCloud/Dropbox this way — those are managed by Finder
+   and the apps themselves.)
+
+If you'd already pinned the shelf **before** it got its star icon, remove it
+from the sidebar and drag it back in (or just log out/in) so the sidebar picks
+up the new icon.
 
 ## Command line (for scripting / Terminal folk)
 ```
@@ -111,6 +132,9 @@ Now right-click any folder → **Quick Actions → Add to Working Folders**.
 - `working-folders.sh` — the engine (menu + command line, bash + AppleScript)
 - `Working Folders.command` — double-click launcher for the menu (macOS)
 - `droplet.applescript` — source for the drag-&-drop app (built by `build-app`)
+- `assets/` — the star icons (`working-folders-app.png`, `working-folders-folder.png`)
+  and `make_icons.py`, the Pillow script that draws them. The `.icns` for the app
+  is generated on your Mac at build time with the built-in `sips`/`iconutil`.
 - `README.md` — this file
 
 ## Notes / caveats

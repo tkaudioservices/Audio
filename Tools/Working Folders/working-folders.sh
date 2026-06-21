@@ -96,6 +96,37 @@ end tell
 OSA
 }
 
+# Build an .icns from a PNG using macOS built-ins.  $1=source png  $2=dest icns
+make_icns() {
+  command -v sips >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1 || return 1
+  local src="$1" out="$2" work iconset s rc
+  work="$(mktemp -d)"; iconset="$work/icon.iconset"; mkdir -p "$iconset"
+  for s in 16 32 128 256 512; do
+    sips -z "$s" "$s" "$src" --out "$iconset/icon_${s}x${s}.png" >/dev/null 2>&1
+    sips -z "$((s * 2))" "$((s * 2))" "$src" --out "$iconset/icon_${s}x${s}@2x.png" >/dev/null 2>&1
+  done
+  iconutil -c icns "$iconset" -o "$out" >/dev/null 2>&1; rc=$?
+  rm -rf "$work"
+  return $rc
+}
+
+# Give a folder (or file) a custom icon, via the macOS system Python + Cocoa.
+# Best-effort: returns non-zero (and changes nothing) if it can't.  $1=png $2=path
+set_custom_icon() {
+  [ -f "$1" ] || return 1
+  /usr/bin/python3 - "$1" "$2" >/dev/null 2>&1 <<'PY'
+import sys
+try:
+    from Cocoa import NSImage, NSWorkspace
+except Exception:
+    sys.exit(1)
+img = NSImage.alloc().initWithContentsOfFile_(sys.argv[1])
+if img is None:
+    sys.exit(1)
+sys.exit(0 if NSWorkspace.sharedWorkspace().setIcon_forFile_options_(img, sys.argv[2], 0) else 1)
+PY
+}
+
 # ----------------------------------------------------------------- actions --
 cmd_add_current() {
   local p
@@ -161,6 +192,10 @@ cmd_open() {
 cmd_setup() {
   ensure_hub
   say "Created your shelf:  $HUB"
+  if [ -f "$SCRIPT_DIR/assets/working-folders-folder.png" ] \
+     && set_custom_icon "$SCRIPT_DIR/assets/working-folders-folder.png" "$HUB"; then
+    say "Gave the shelf a ★ star icon so it stands out in the sidebar."
+  fi
   say
   if command -v mysides >/dev/null 2>&1; then
     local url="file://$(printf '%s' "$HUB" | sed 's/ /%20/g')/"
@@ -191,6 +226,11 @@ cmd_build_app() {
   rm -rf "$app"
   if osacompile -o "$app" "$SCRIPT_DIR/droplet.applescript" 2>/dev/null; then
     say "Built the app:  $app"
+    if [ -f "$SCRIPT_DIR/assets/working-folders-app.png" ] \
+       && make_icns "$SCRIPT_DIR/assets/working-folders-app.png" "$app/Contents/Resources/applet.icns"; then
+      touch "$app"
+      say "Gave it the gold-star icon. ★"
+    fi
     say
     say "Now you can DRAG any folder onto it to pin that folder to your shelf."
     say "Keep it in your Dock, or drag it onto a Finder window's toolbar, so a"
