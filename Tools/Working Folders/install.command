@@ -3,8 +3,8 @@
 # Created by tk Audio Services.
 #
 # Puts the tool in a stable home (~/Library/Application Support/Working Folders),
-# builds the drag-&-drop app into ~/Applications, sets up your shelf, and (if
-# PyObjC is available) starts the ★ menu bar app and keeps it running at login.
+# sets up your shelf and pins it to the Finder sidebar, and (if PyObjC is
+# available) starts the ★ menu bar app and keeps it running at login.
 # Nothing here needs admin/sudo. Re-runnable. Undo with uninstall.command.
 
 set -u
@@ -36,7 +36,7 @@ hr
 
 # 1) copy the tool into a stable location -----------------------------------
 mkdir -p "$SUPPORT"
-for f in working-folders.sh droplet.applescript menubar.py \
+for f in working-folders.sh menubar.py \
          "Working Folders.command" uninstall.command README.md; do
   [ -e "$SRC/$f" ] && cp -f "$SRC/$f" "$SUPPORT/$f"
 done
@@ -71,11 +71,10 @@ else
   say "• No Homebrew, so the sidebar pin will be a one-time drag (setup shows how)."
 fi
 
-# 2) build the drag-&-drop app (into ~/Applications, with the star icon) -----
-if bash "$SUPPORT/working-folders.sh" build-app; then
-  say "• Built the drag-&-drop app in ~/Applications."
-else
-  say "• (Skipped the app build — see messages above.)"
+# 2) remove any old drag-&-drop app left by a previous install ---------------
+OLD_APP="$HOME/Applications/Add to Working Folders.app"
+if [ -d "$OLD_APP" ]; then
+  rm -rf "$OLD_APP" && say "• Removed the old drag-&-drop app from ~/Applications."
 fi
 
 # 3) create the shelf + give it the icon + sidebar instructions -------------
@@ -101,34 +100,8 @@ else
       if "$PY" -m pip install --user pyobjc-framework-Cocoa && "$PY" -c "import AppKit" >/dev/null 2>&1; then
         say "• PyObjC installed."
         HAVE_PYOBJC=1
-        # backfill the icons now that we can render them
-        bash "$SUPPORT/working-folders.sh" build-app >/dev/null 2>&1
-        "$PY" - "$SYMBOL" "$HOME/Working Folders" >/dev/null 2>&1 <<'PY' || true
-import sys
-from AppKit import (NSImage, NSWorkspace, NSColor, NSColorSpace, NSBezierPath,
-                    NSImageSymbolConfiguration, NSGraphicsContext)
-from Foundation import NSMakeRect, NSZeroRect
-sym, dest, size = sys.argv[1], sys.argv[2], 512
-base = NSImage.imageWithSystemSymbolName_accessibilityDescription_(sym, None)
-if base is None:
-    sys.exit(0)
-cfg = NSImageSymbolConfiguration.configurationWithPointSize_weight_scale_(200.0, 0.0, 3)
-glyph = base.imageWithSymbolConfiguration_(cfg) or base
-try:
-    col = NSColor.controlAccentColor().colorUsingColorSpace_(NSColorSpace.sRGBColorSpace())
-except Exception:
-    col = NSColor.colorWithSRGBRed_green_blue_alpha_(10/255.0, 132/255.0, 255/255.0, 1.0)
-canvas = NSImage.alloc().initWithSize_((size, size))
-canvas.lockFocus()
-s = glyph.size(); box = size * 0.62
-k = box / (s.width if s.width >= s.height else s.height)
-dw, dh = s.width * k, s.height * k
-glyph.drawInRect_fromRect_operation_fraction_(NSMakeRect((size-dw)/2.0, (size-dh)/2.0, dw, dh), NSZeroRect, 2, 1.0)
-NSGraphicsContext.currentContext().setCompositingOperation_(5)
-col.set(); NSBezierPath.bezierPathWithRect_(NSMakeRect(0, 0, size, size)).fill()
-canvas.unlockFocus()
-NSWorkspace.sharedWorkspace().setIcon_forFile_options_(canvas, dest, 0)
-PY
+        # now that PyObjC works, render the star icon and refresh the sidebar
+        bash "$SUPPORT/working-folders.sh" refresh >/dev/null 2>&1
       else
         say "• PyObjC install didn't complete — skipping the menu bar app and"
         say "  the auto icon. Everything else still works."
@@ -194,10 +167,8 @@ say "  Done. Here's where everything stands:"
 hr
 bash "$SUPPORT/working-folders.sh" doctor
 hr
-say "  • Look for the ★ in your menu bar, and 'Working Folders' in the Finder"
-say "    sidebar under Favourites. (If the sidebar didn't update, it will after"
-say "    the next Finder relaunch / login.)"
-say "  • The drag-&-drop app is in ~/Applications — keep it in your Dock if you like."
+say "  • Look for the ★ in your menu bar, and 'Working Folders' (with its star"
+say "    icon) in the Finder sidebar under Favourites."
 say "  • Re-run this any time; remove everything with uninstall.command (in $SUPPORT)."
 hr
 printf '\nPress return to close.'; read -r _ || true
