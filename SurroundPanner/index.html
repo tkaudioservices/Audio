@@ -95,7 +95,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.22.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.23.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -367,11 +367,12 @@ function effPos(o){
   else if(o.effect===4){ x=o.x+d*Math.sin(ph*0.7); y=o.y+d*Math.cos(ph*0.53); }          // drift (approx)
   return {x:clamp(x),y:clamp(y),z:clamp(z,0,1)};                                          // effect 3 (spread) doesn't move
 }
-// the position to draw an object at: REAPER's live value when Follow play is on (and we have it),
-// otherwise the local preview (effect simulation or static base).
-const curPos=o=> (state.follow && o.live) ? o.live : effPos(o);
+// the position to draw an object at. A live effect runs in the plug-in but is NOT written back to the
+// sliders, so we show it from the local simulation (effPos). For objects with no live effect, Follow
+// play shows REAPER's actual position (manual / baked / recorded automation) from o.live.
+const curPos=o=> (state.follow && o.live && !o.effect) ? o.live : effPos(o);
 let fxAnim=false;
-const anyEffect=()=>!state.fxPaused && !state.follow && state.objects.some(o=>o.effect>0 && o.visible!==false);
+const anyEffect=()=>!state.fxPaused && state.objects.some(o=>o.effect>0 && o.visible!==false);
 function fxTick(){ if(!fxAnim) return; render(); updateLiveFaders(); requestAnimationFrame(fxTick); }
 function updateFxAnim(){ const need=anyEffect();
   if(need && !fxAnim){ fxAnim=true; requestAnimationFrame(fxTick); }
@@ -765,8 +766,14 @@ $('oName').onchange=e=>{ const o=cur(); if(!o||!o.osc)return; postRename(o.osc.t
 // effects engine controls — applied to every selected object (multi-select), so you can shape a
 // whole group of objects at once. Falls back to the single current object.
 function applyFxToSel(setter){ const set=curSet(), list=set.length?set:[cur()].filter(Boolean); list.forEach(o=>{ setter(o); sendFx(o); }); render(); }
-$('oFx').onchange=e=>{ const v=parseInt(e.target.value,10), now=performance.now();
-  applyFxToSel(o=>{ o.effect=v; o.fxT0=now; });   // anchor the preview phase to enable-time (the plug-in resets too)
+// Reading a baked envelope and running the live generator on the same X/Y/Z would fight each other,
+// so turning an effect ON clears that object's bake first (generator and automation are exclusive).
+async function clearBakesFor(list){ const t=list.filter(o=>o.baked && o.osc); if(!t.length) return false;
+  const ok=await postBake('clear', t.map(o=>({t:o.osc.track}))); t.forEach(o=>o.baked=null); return ok; }
+$('oFx').onchange=async e=>{ const v=parseInt(e.target.value,10), now=performance.now();
+  const list=curSet().length?curSet():[cur()].filter(Boolean);
+  if(v>0) await clearBakesFor(list);                // switch to the generator → drop any baked automation
+  applyFxToSel(o=>{ o.effect=v; o.fxT0=now; });     // anchor the preview phase to enable-time (the plug-in resets too)
   syncObjEditor(); };
 $('oFa').onchange=e=>{ const v=parseInt(e.target.value,10); applyFxToSel(o=>o.axis=v); };
 $('oFr').oninput=e=>{ const r=pctToRate(parseFloat(e.target.value)); $('oFrv').textContent=rateLabel(r); applyFxToSel(o=>o.rate=r); };

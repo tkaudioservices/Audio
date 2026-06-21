@@ -3,6 +3,11 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.23.0
+- **Fixed the effects engine (correctness).** The base position now stays **clean in the X/Y/Z sliders** — the effect modulates an internal position for the audio only and **no longer writes the moving value back into the sliders** (reverting v0.15's "faders move with the effect"). That write-back could corrupt the base, especially when a leftover bake envelope was also driving X/Y/Z, which is what caused: effects panning to the wrong side (left played right), an Oscillate that came out lopsided (right→centre instead of left↔right), and a Bake that didn't match what you heard. Live panning and the effect math were verified correct; this removes the thing that was throwing them off.
+- **Generator ⇄ automation, in harmony.** The plug-in is in **generate** mode when an Effect is selected and in **read** mode when it's Off (then X/Y/Z follow manual moves or a baked/recorded **envelope**). They're now mutually exclusive: turning an effect on **clears that object's bake first**, so the generator never fights the automation. **Bake** freezes the generator to an envelope and switches to read; **Clear bake(s)** removes it and restores the effect.
+- **Follow play** now reflects this: live effects animate from the preview; **baked/recorded** moves animate from REAPER's actual automation as it plays. The plug-in's faders move during automation playback (REAPER drives them); during a live effect the base sliders stay put and the motion shows in the plug-in's mini‑map + the web view.
+
 ## v0.22.0
 - **Follow play.** A *Follow play* toggle (REAPER connection) shows REAPER's **live output position** in the view — so **baked** and **recorded** moves (and live effects) animate as the project plays. Display-only: it never changes an object's base position.
 - **Gain in dB.** Object **Gain** and **LFE send** now read and set in **decibels** (−∞…0 dB) instead of a 0–1 number.
