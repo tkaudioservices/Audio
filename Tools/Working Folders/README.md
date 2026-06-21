@@ -28,24 +28,31 @@ Nothing here ever moves, renames or deletes your real project folders — an
 alias is only a pointer, and removing one deletes only the pointer.
 
 ## Requirements
-- **macOS** (any recent version). It uses Finder + AppleScript, both built in.
-- No installs, no `pip`, nothing to download. (One *optional* extra below.)
+- **macOS** (any recent version). Finder + AppleScript are built in; the core
+  needs **no installs**.
+- The optional **★ menu bar app** and the **automatic icon** use Apple's
+  **PyObjC**. The installer checks for it and offers to add it (a quick,
+  user-only `pip install` — no admin). Everything else works without it.
 
 > macOS only — this is a Finder tool, so there's no Windows version.
 
-## Quick start
-1. Double-click **`Working Folders.command`**.
-   (First time, macOS may block it: **right-click → Open → Open**.)
-2. Choose **5) First-time setup**. It creates the shelf, gives it the **system
-   line-art star icon** (see [The icon](#the-icon)) so it stands out, and
-   reveals it in Finder. **Drag the “Working Folders” folder into your Finder
-   sidebar**, under *Favourites* (the section just above *Locations*). You only
-   do this once.
-3. Choose **6) Build the drag-&-drop app** to get an
-   **“Add to Working Folders”** app (same line-art icon) in your `~/Applications`
-   folder. Keep it in your Dock (optional, but handy).
+## Quick start — two ways
+**A) Install it properly (recommended).** Double-click **`install.command`**
+(first time: **right-click → Open → Open**). It copies the tool into
+`~/Library/Application Support`, builds the drag-&-drop app into `~/Applications`,
+creates and icons your shelf, and — if you let it add PyObjC — puts a **★ in your
+menu bar** that starts automatically at login. Re-runnable; undo any time with
+**`uninstall.command`**. See [Installed mode & the ★ menu bar app](#installed-mode--the--menu-bar-app).
 
-That's it. From now on:
+**B) Just run it from here (no install).** Double-click
+**`Working Folders.command`** → **5) First-time setup**, then **6) Build the
+drag-&-drop app**. Good for trying it out, or if you'd rather not install anything.
+
+**Either way**, do this once: when setup reveals the shelf, **drag the “Working
+Folders” folder into your Finder sidebar**, under *Favourites* (the section just
+above *Locations*). From then on it's one click away.
+
+From now on:
 
 ## Daily use
 - **Pin what you're working on** — three ways, whichever suits you:
@@ -57,6 +64,38 @@ That's it. From now on:
   double-click the project. No hierarchy to wade through.
 - **Take it off the shelf** when you're done — menu option **4**. This deletes
   only the shortcut; the real folder and its files are untouched.
+
+## Installed mode & the ★ menu bar app
+Running **`install.command`** gives you the always-there version:
+
+- **A ★ in the menu bar** with a live dropdown: every folder on your shelf
+  (click one to jump straight there), plus *Add the folder I'm looking at*,
+  *Open the shelf*, and *Set up*. It starts at login and quietly relaunches if
+  it ever crashes — though **Quit** in its own menu really does quit. It uses the
+  same system `star`, drawn as a *template* image so it adapts perfectly to
+  light/dark menu bars.
+- **A stable home.** The tool is copied to `~/Library/Application Support/Working
+  Folders/`, so it no longer matters where this repo folder lives (e.g. inside
+  Dropbox). The drag-&-drop app goes in `~/Applications`.
+- **Login item.** A LaunchAgent at
+  `~/Library/LaunchAgents/com.tkaudioservices.workingfolders.menubar.plist`.
+
+**It needs PyObjC.** The menu bar app and the automatic icon use Apple's PyObjC,
+which macOS's `/usr/bin/python3` often doesn't ship. The installer offers to add
+it for your user only — `/usr/bin/python3 -m pip install --user
+pyobjc-framework-Cocoa`, no admin. Say no and everything else still works; you
+just won't get the menu bar or the auto icon (you can still set one by hand).
+
+**Why there's no background “service”/daemon.** There's nothing to run
+continuously — the shelf is just aliases in the sidebar, and adding/removing is
+on-demand. The menu bar app is the only always-running piece, and it exists only
+to give you the dropdown; the shelf itself needs no process at all.
+
+**Uninstall.** Double-click **`uninstall.command`** (a copy is kept in the
+Application Support folder). It stops and removes the menu bar app, its login
+item and the `~/Applications` app, and *asks* before touching your shelf. It
+can't unpin the sidebar item for you — do that with right-click → *Remove from
+Sidebar*.
 
 ## Removing things — two different things
 There are two separate "removes", depending on what you mean:
@@ -140,23 +179,13 @@ If `mysides` is installed, **setup** will also auto-pin the shelf for you
 instead of asking you to drag it. (The shelf approach is the default because it
 needs nothing extra and keeps the sidebar tidy — one item, not twenty.)
 
-## Optional: a right-click “Add to Working Folders” in Finder
-Want it on the Finder right-click menu too? It's a one-minute Automator job:
-1. Open **Automator** → **New** → **Quick Action**.
-2. Set *“Workflow receives current”* to **folders** in **Finder**.
-3. Drag in a **Run Shell Script** action; set *Pass input* to **as arguments**.
-4. Paste (edit the path to where this folder lives):
-   ```bash
-   "/Users/you/Dropbox/Audio/Tools/Working Folders/working-folders.sh" add "$@"
-   ```
-5. Save it as **Add to Working Folders**.
-
-Now right-click any folder → **Quick Actions → Add to Working Folders**.
-
 ## Files in this folder
 - `working-folders.sh` — the engine (menu + command line, bash + AppleScript).
   Also renders the system SF Symbol for the icon, on your Mac, no assets shipped.
 - `Working Folders.command` — double-click launcher for the menu (macOS)
+- `install.command` / `uninstall.command` — set up (or remove) the installed
+  mode: Application Support copy, `~/Applications` app, and the ★ menu bar login item
+- `menubar.py` — the ★ menu bar app (PyObjC); started at login by the installer
 - `droplet.applescript` — source for the drag-&-drop app (built by `build-app`)
 - `README.md` — this file
 
