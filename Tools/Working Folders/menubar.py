@@ -15,6 +15,7 @@ import subprocess
 import sys
 
 try:
+    import objc
     from AppKit import (NSApplication, NSStatusBar, NSMenu, NSMenuItem, NSImage,
                         NSVariableStatusItemLength,
                         NSApplicationActivationPolicyAccessory)
@@ -28,6 +29,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ENGINE = os.path.join(HERE, "working-folders.sh")
 HUB = os.environ.get("WORKING_FOLDERS_HUB", os.path.expanduser("~/Working Folders"))
 SYMBOL = os.environ.get("WORKING_FOLDERS_SYMBOL", "star")
+ICON_FILE = "Icon\r"  # the custom-folder-icon file — never show it as an entry
 
 
 def _engine(*args):
@@ -40,6 +42,7 @@ def _engine(*args):
 
 class WorkingFoldersDelegate(NSObject):
 
+    # --- Objective-C selectors (these are called by AppKit) -----------------
     def applicationDidFinishLaunching_(self, _note):
         self.statusItem = NSStatusBar.systemStatusBar().statusItemWithLength_(
             NSVariableStatusItemLength)
@@ -55,47 +58,15 @@ class WorkingFoldersDelegate(NSObject):
         self.menu = NSMenu.alloc().init()
         self.menu.setDelegate_(self)          # rebuild each time it opens
         self.statusItem.setMenu_(self.menu)
-        self._rebuild()
+        self.rebuild()
 
-    # NSMenuDelegate — keep the list fresh
-    def menuWillOpen_(self, _menu):
-        self._rebuild()
+    def menuWillOpen_(self, _menu):           # NSMenuDelegate — keep it fresh
+        self.rebuild()
 
-    def _add(self, title, action, key=""):
-        item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, action, key)
-        if action is not None:
-            item.setTarget_(self)
-        else:
-            item.setEnabled_(False)
-        self.menu.addItem_(item)
-        return item
-
-    def _rebuild(self):
-        self.menu.removeAllItems()
-        self._add("Working Folders", None)
-        self.menu.addItem_(NSMenuItem.separatorItem())
-        try:
-            entries = sorted(e for e in os.listdir(HUB) if not e.startswith("."))
-        except OSError:
-            entries = []
-        if entries:
-            for name in entries:
-                item = self._add(name, "openEntry:")
-                item.setRepresentedObject_(os.path.join(HUB, name))
-        else:
-            self._add("(shelf is empty — add something below)", None)
-        self.menu.addItem_(NSMenuItem.separatorItem())
-        self._add("Add the Folder I’m Looking At", "addCurrent:")
-        self._add("Open Working Folders Shelf", "openShelf:")
-        self._add("Set Up / Pin to Sidebar…", "runSetup:")
-        self.menu.addItem_(NSMenuItem.separatorItem())
-        self._add("Quit", "quit:", "q")
-
-    # actions
     def openEntry_(self, sender):
         path = sender.representedObject()
         if path:
-            subprocess.Popen(["/usr/bin/open", path])
+            subprocess.Popen(["/usr/bin/open", str(path)])
 
     def addCurrent_(self, _sender):
         _engine("add-current")
@@ -110,6 +81,40 @@ class WorkingFoldersDelegate(NSObject):
 
     def quit_(self, _sender):
         NSApplication.sharedApplication().terminate_(self)
+
+    # --- pure-Python helpers (hidden from the Obj-C runtime) ----------------
+    @objc.python_method
+    def add_item(self, title, action, key=""):
+        item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, action, key)
+        if action is not None:
+            item.setTarget_(self)
+        else:
+            item.setEnabled_(False)
+        self.menu.addItem_(item)
+        return item
+
+    @objc.python_method
+    def rebuild(self):
+        self.menu.removeAllItems()
+        self.add_item("Working Folders", None)
+        self.menu.addItem_(NSMenuItem.separatorItem())
+        try:
+            entries = sorted(e for e in os.listdir(HUB)
+                             if not e.startswith(".") and e != ICON_FILE)
+        except OSError:
+            entries = []
+        if entries:
+            for name in entries:
+                item = self.add_item(name, b"openEntry:")
+                item.setRepresentedObject_(os.path.join(HUB, name))
+        else:
+            self.add_item("(shelf is empty — add something below)", None)
+        self.menu.addItem_(NSMenuItem.separatorItem())
+        self.add_item("Add the Folder I’m Looking At", b"addCurrent:")
+        self.add_item("Open Working Folders Shelf", b"openShelf:")
+        self.add_item("Set Up / Pin to Sidebar…", b"runSetup:")
+        self.menu.addItem_(NSMenuItem.separatorItem())
+        self.add_item("Quit", b"quit:", "q")
 
 
 def main():

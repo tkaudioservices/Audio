@@ -20,6 +20,13 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 PY="/usr/bin/python3"
 SYMBOL="${WORKING_FOLDERS_SYMBOL:-star}"
 
+# A double-clicked .command doesn't always have Homebrew on PATH — add it so we
+# (and the setup step we call) can find brew and mysides.
+for d in /opt/homebrew/bin /usr/local/bin /opt/homebrew/sbin /usr/local/sbin; do
+  [ -d "$d" ] && case ":$PATH:" in *":$d:"*) ;; *) PATH="$d:$PATH" ;; esac
+done
+export PATH
+
 say() { printf '%s\n' "$*"; }
 hr()  { say "------------------------------------------------------------"; }
 
@@ -36,6 +43,23 @@ done
 chmod +x "$SUPPORT/working-folders.sh" "$SUPPORT/Working Folders.command" \
          "$SUPPORT/uninstall.command" 2>/dev/null
 say "• Installed to:  $SUPPORT"
+
+# 1b) make sure mysides is present — it's what pins the shelf to the sidebar --
+if command -v mysides >/dev/null 2>&1; then
+  say "• mysides already installed (for the Finder-sidebar pin)."
+elif command -v brew >/dev/null 2>&1; then
+  say "• Installing mysides via Homebrew (this is what pins the sidebar)…"
+  if brew list mysides >/dev/null 2>&1 || brew install mysides >/dev/null 2>&1; then
+    say "  mysides installed."
+  else
+    say "  Couldn't install mysides automatically — the sidebar pin will be a"
+    say "  one-time manual drag (setup will show you how)."
+  fi
+else
+  say "• No Homebrew found, so I can't auto-install mysides — the sidebar pin"
+  say "  will be a one-time manual drag (setup shows how). To get auto-pinning,"
+  say "  install Homebrew (brew.sh) or mysides (github.com/mosen/mysides)."
+fi
 
 # 2) build the drag-&-drop app (into ~/Applications, with the star icon) -----
 if bash "$SUPPORT/working-folders.sh" build-app; then
@@ -156,13 +180,14 @@ PLISTEOF
 fi
 
 hr
-say "  Done."
-say
-say "  • Look for the ★ in your menu bar (if PyObjC was enabled)."
-say "  • Drag the “Working Folders” folder into the Finder sidebar once"
-say "    (under Favourites) — see the setup note above."
-say "  • The drag-&-drop app is in ~/Applications; keep it in your Dock if you like."
-say
-say "  To remove everything later: run uninstall.command (it's in $SUPPORT)."
+say "  Done. Here's where everything stands:"
+hr
+bash "$SUPPORT/working-folders.sh" doctor
+hr
+say "  • Look for the ★ in your menu bar, and “Working Folders” in the Finder"
+say "    sidebar under Favourites. (If the sidebar didn't update, it will after"
+say "    the next Finder relaunch / login.)"
+say "  • The drag-&-drop app is in ~/Applications — keep it in your Dock if you like."
+say "  • Re-run this any time; remove everything with uninstall.command (in $SUPPORT)."
 hr
 printf '\nPress return to close.'; read -r _ || true
