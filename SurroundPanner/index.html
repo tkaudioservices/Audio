@@ -98,7 +98,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.25.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.26.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -118,7 +118,8 @@
       <h3>Objects <span class="right"><span class="info" title="Show / hide help">i</span><span class="chev">▾</span></span></h3>
       <div class="body">
         <div class="list" id="objList"></div>
-        <div class="hint help" id="objHint">Objects are your REAPER tracks — they load automatically while <span class="kbd">tkSurroundPanner.lua</span> is running. Editing the name here renames the REAPER track.</div>
+        <div class="row" id="globalSrc"><label>All objects</label><div class="seg"><button class="btn" id="gFx" title="Every object → built‑in FX engine, with envelopes bypassed in REAPER so nothing fights the generator">Follow FX</button><button class="btn" id="gEnvOn" title="Enable (un‑bypass) every object's X/Y/Z envelopes — read baked / recorded automation">Enable env</button><button class="btn" id="gEnvOff" title="Bypass every object's envelopes in REAPER — hold manual positions">Disable env</button></div></div>
+        <div class="hint help" id="objHint">Objects are your REAPER tracks — they load automatically while <span class="kbd">tkSurroundPanner.lua</span> is running. Editing the name here renames the REAPER track. <b>All objects</b> applies the movement source to every object at once (Enable/Disable use REAPER's envelope bypass).</div>
         <div id="objEditor" style="display:none">
           <div class="row"><label>Name</label><input type="text" id="oName" title="Renames the REAPER track" placeholder="Track name"></div>
           <div class="row"><label>X · L/R</label><input type="range" id="oX" min="-1" max="1" step="0.001"><span class="val" id="oXv">0</span></div>
@@ -128,8 +129,8 @@
           <div class="row"><label>LFE send</label><input type="range" id="oL" min="-60" max="0" step="0.5"><span class="val" id="oLv">−∞</span></div>
 
           <div class="fxsep">Movement</div>
-          <div class="row"><label>Source</label><div class="seg"><button class="btn toggle" id="mEnv" title="Read X/Y/Z from REAPER automation — baked or recorded envelopes drive this object">Follow envelopes</button><button class="btn toggle" id="mFx" title="Generate motion with the built‑in FX engine (Orbit / Oscillate / Drift / Spread)">Follow FX engine</button></div></div>
-          <div class="hint help" id="fxEnvNote">Reading X/Y/Z <b>automation</b> — baked or recorded envelopes drive this object, and the view follows them while REAPER plays. Switch to <b>Follow FX engine</b> to generate live motion instead.</div>
+          <div class="row"><label>Source</label><div class="seg"><button class="btn toggle" id="mFx" title="Generate motion with the built‑in FX engine; bypasses this object's envelopes so they can't fight it">Follow FX</button><button class="btn toggle" id="mEnvOn" title="Read this object's X/Y/Z automation — baked or recorded envelopes drive it on playback">Enable env</button><button class="btn toggle" id="mEnvOff" title="Bypass this object's envelopes in REAPER — holds its manual position, nothing driving it">Disable env</button></div></div>
+          <div class="hint help" id="fxEnvNote"></div>
           <div id="fxEngineRows">
             <div class="hint help" style="margin-top:8px"><span id="fxScope"></span>Effect — animates this object in the plug‑in, so it renders to file. Orbit / Oscillate / Drift move it; Spread widens it across more speakers. <span class="pill">Ctrl/Shift‑click the list to select several and shape them together.</span></div>
             <div class="row"><label>Effect</label><select id="oFx"><option value="1">Orbit</option><option value="2">Oscillate</option><option value="3">Spread / size</option><option value="4">Random drift</option></select></div>
@@ -693,11 +694,15 @@ function syncObjEditor(){
   $('oG').value=linToDb(o.gain); $('oGv').textContent=fmtDb(o.gain);
   $('oL').value=linToDb(o.lfe||0); $('oLv').textContent=fmtDb(o.lfe||0);
   const rate=o.rate==null?0.3:o.rate, depth=o.depth==null?0.3:o.depth;
-  const useFx = (o.effect||0) > 0;                   // generator on ⇒ "Follow FX engine"; off ⇒ "Follow envelopes"
+  const useFx = (o.effect||0) > 0;                   // generator on ⇒ Follow FX; off ⇒ env enabled (read) or disabled (manual)
   $('mFx').classList.toggle('on', useFx);
-  $('mEnv').classList.toggle('on', !useFx);
+  $('mEnvOn').classList.toggle('on', !useFx && !!o.envOn);
+  $('mEnvOff').classList.toggle('on', !useFx && !o.envOn);
   $('fxEngineRows').style.display = useFx ? 'block' : 'none';
   $('fxEnvNote').style.display    = useFx ? 'none' : 'block';
+  $('fxEnvNote').innerHTML = o.envOn
+    ? 'Reading X/Y/Z <b>automation</b> — baked or recorded envelopes drive this object on playback. <b>Disable env</b> bypasses them; <b>Follow FX</b> generates motion instead.'
+    : 'Envelopes <b>bypassed</b> — this object holds its manual position, nothing driving it. <b>Bake</b> or <b>Enable env</b> to use automation; <b>Follow FX</b> to generate motion.';
   $('oFx').value = useFx ? o.effect : (o.lastFx||1); $('oFr').value=rateToPct(rate); $('oFrv').textContent=rateLabel(rate);
   $('oFd').value=depth; $('oFdv').textContent=xyToM(depth); $('oFa').value=o.axis||0;
   $('oFp').value=o.phase||0; $('oFpv').textContent=Math.round((o.phase||0)*360)+'°';
@@ -781,24 +786,40 @@ $('oName').onchange=e=>{ const o=cur(); if(!o||!o.osc)return; postRename(o.osc.t
 // effects engine controls — applied to every selected object (multi-select), so you can shape a
 // whole group of objects at once. Falls back to the single current object.
 function applyFxToSel(setter){ const set=curSet(), list=set.length?set:[cur()].filter(Boolean); list.forEach(o=>{ setter(o); sendFx(o); }); render(); }
-// Reading a baked envelope and running the live generator on the same X/Y/Z would fight each other,
-// so turning an effect ON clears that object's bake first (generator and automation are exclusive).
-async function clearBakesFor(list){ const t=list.filter(o=>o.baked && o.osc); if(!t.length) return false;
-  const ok=await postBake('clear', t.map(o=>({t:o.osc.track}))); t.forEach(o=>o.baked=null); return ok; }
-$('oFx').onchange=async e=>{ const v=parseInt(e.target.value,10), now=performance.now();
-  const list=curSet().length?curSet():[cur()].filter(Boolean);
-  await clearBakesFor(list);                         // switch to the generator → drop any baked automation
-  applyFxToSel(o=>{ o.effect=v; o.lastFx=v; o.fxT0=now; });  // remember the engine; anchor the preview phase
-  syncObjEditor(); };
-// Movement source toggle — the explicit read/generate switch the plug-in honours:
-//   Follow envelopes = effect Off, so X/Y/Z obey manual moves or a baked/recorded automation envelope.
-//   Follow FX engine = run the built-in generator (and clear any bake first, so the two never fight).
-$('mEnv').onclick=()=>{ applyFxToSel(o=>{ if(o.effect){ o.lastFx=o.effect; o.effect=0; } }); syncObjEditor(); };
-$('mFx').onclick=async()=>{ const now=performance.now();
-  const list=curSet().length?curSet():[cur()].filter(Boolean);
-  await clearBakesFor(list);
-  applyFxToSel(o=>{ if(!o.effect){ o.effect=o.lastFx||1; } o.fxT0=now; });
-  syncObjEditor(); };
+// Movement source — three explicit, mutually-exclusive modes the plug-in honours:
+//   Follow FX   = run the built-in generator; BYPASS the envelopes in REAPER so they can't fight it.
+//   Enable env  = generator off, envelopes ACTIVE (read a baked / recorded automation move).
+//   Disable env = generator off, envelopes BYPASSED (object holds its manual position).
+// We bypass (not delete) envelopes via REAPER's native active flag, so a baked move is never lost.
+async function postEnv(action,tracks){
+  if(!tracks.length) return true;
+  try{ const r=await fetch(state.bridge.url+'/envelopes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,tracks})}); setConn(r.ok); return r.ok; }
+  catch(e){ setConn(false); return false; }
+}
+const selList   = ()=> (curSet().length?curSet():[cur()].filter(Boolean));
+const tracksOf  = list=> list.filter(o=>o.osc).map(o=>o.osc.track);
+const resendBase= list=> list.forEach(o=>{ if(o.osc) sendObject(o); });   // re-assert the UI base after bypassing an envelope
+function applyFxTo(list,setter){ list.forEach(o=>{ setter(o); sendFx(o); }); render(); }
+async function setFollowFx(list){ const now=performance.now();
+  applyFxTo(list, o=>{ if(!o.effect)o.effect=o.lastFx||1; o.fxT0=now; o.envOn=false; });
+  await postEnv('disable', tracksOf(list)); resendBase(list); syncObjEditor(); }
+async function setEnableEnv(list){
+  applyFxTo(list, o=>{ if(o.effect){ o.lastFx=o.effect; o.effect=0; } o.envOn=true; });
+  await postEnv('enable', tracksOf(list)); syncObjEditor(); }
+async function setDisableEnv(list){
+  applyFxTo(list, o=>{ if(o.effect){ o.lastFx=o.effect; o.effect=0; } o.envOn=false; });
+  await postEnv('disable', tracksOf(list)); resendBase(list); syncObjEditor(); }
+$('oFx').onchange=async e=>{ const v=parseInt(e.target.value,10), now=performance.now(), list=selList();
+  applyFxTo(list, o=>{ o.effect=v; o.lastFx=v; o.fxT0=now; o.envOn=false; });   // picking an engine ⇒ Follow FX
+  await postEnv('disable', tracksOf(list)); resendBase(list); syncObjEditor(); };
+$('mFx').onclick    =()=>setFollowFx(selList());
+$('mEnvOn').onclick =()=>setEnableEnv(selList());
+$('mEnvOff').onclick=()=>setDisableEnv(selList());
+// Global — same three actions across every object at once (REAPER envelope bypass for enable/disable).
+const allObjs=()=>state.objects.filter(o=>o.osc);
+$('gFx').onclick    =()=>setFollowFx(allObjs());
+$('gEnvOn').onclick =()=>setEnableEnv(allObjs());
+$('gEnvOff').onclick=()=>setDisableEnv(allObjs());
 $('oFa').onchange=e=>{ const v=parseInt(e.target.value,10); applyFxToSel(o=>o.axis=v); };
 $('oFr').oninput=e=>{ const r=pctToRate(parseFloat(e.target.value)); $('oFrv').textContent=rateLabel(r); applyFxToSel(o=>o.rate=r); };
 $('oFd').oninput=e=>{ const d=parseFloat(e.target.value); $('oFdv').textContent=xyToM(d); applyFxToSel(o=>o.depth=d); };
@@ -830,12 +851,13 @@ async function bakeFx(clear){
     const bakeable=list.filter(o=>o.effect>0 && o.effect!==3);
     if(!bakeable.length){ alert('None of the selected objects has a bakeable effect (Orbit / Oscillate / Drift). Spread isn’t a position move.'); return; }
     const ok=await postBake('bake', bakeable.map(o=>({t:o.osc.track, x:o.x, y:o.y, z:o.z})));
-    if(ok){ bakeable.forEach(o=>{ o.baked={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis}; o.effect=0; });
+    if(ok){ bakeable.forEach(o=>{ o.baked={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis}; o.effect=0; o.envOn=true; });
       if(h) h.textContent='baked '+bakeable.length+' object(s) → X/Y/Z envelopes (render-ready)'; }
     else if(h) h.textContent='bake failed — is the bridge + Live script running?';
   } else {
     const ok=await postBake('clear', list.map(o=>({t:o.osc.track})));
-    if(ok){ list.forEach(o=>{ if(o.baked){ o.effect=o.baked.effect; o.rate=o.baked.rate; o.depth=o.baked.depth; o.axis=o.baked.axis; o.baked=null; sendFx(o); } });
+    if(ok){ list.forEach(o=>{ if(o.baked){ o.effect=o.baked.effect; o.rate=o.baked.rate; o.depth=o.baked.depth; o.axis=o.baked.axis; o.baked=null; sendFx(o); } o.envOn=false; });
+      await postEnv('disable', tracksOf(list));     // bypass the now-empty envelope so it can't fight the restored effect
       if(h) h.textContent='cleared bake on '+list.length+' object(s)'; }
     else if(h) h.textContent='clear failed — is the bridge running?';
   }
@@ -1000,7 +1022,7 @@ function applyImport(d){
   // the UI owns the effect settings (the session doesn't carry them) — keep them across a reload
   const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis,phase:o.phase,baked:o.baked,x:o.x,y:o.y,z:o.z}; });
   if(d.objects) state.objects=d.objects;
-  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; if(o.phase==null)o.phase=pf.phase; if(pf.baked) o.baked=pf.baked;
+  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; if(o.phase==null)o.phase=pf.phase; if(pf.baked){ o.baked=pf.baked; o.envOn=true; }
     if(pf.effect>0){ o.x=pf.x; o.y=pf.y; o.z=pf.z; } } });   // keep the base for fx objects (their reported X/Y/Z is the live motion)
   state.panner=Object.assign(state.panner,d.panner||{});
   const n=state.objects.length||1;

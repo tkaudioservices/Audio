@@ -3,6 +3,12 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.26.0
+- **Envelopes are now bypassed, not just cleared (no more fighting).** Switching a baked/recorded object back to the FX engine used to only *clear* the automation points — the envelope lane stayed active, so REAPER kept driving X/Y/Z from the (now empty) envelope and fought the generator. The plug‑in now **bypasses** the envelope using REAPER's native active flag, so it's truly off without losing the move (and you can re‑enable it later).
+- **Three explicit movement modes per object: Follow FX · Enable env · Disable env.** *Follow FX* runs the generator **and bypasses the envelopes** so nothing fights it. *Enable env* un‑bypasses the X/Y/Z envelopes to read a baked/recorded move. *Disable env* bypasses them, holding the object's manual position. (Replaces the two‑way Follow envelopes/FX toggle.)
+- **Global commands.** An **All objects** row (Follow FX · Enable env · Disable env) applies the same to every object at once, using REAPER's envelope bypass.
+- **Bake/Clear tie‑in.** Baking marks the object as reading its envelope; **Clear bake(s)** now also bypasses the (emptied) envelope so the restored effect can't fight it. *(Bridge protocol → v9: relaunch the bridge and re‑run `tkSurroundPanner.lua` after updating.)*
+
 ## v0.25.0
 - **Fixed reversed / dropping pans on rooms with wall‑coverage speakers (the real one).** The directional **wall wedge** gated a speaker off whenever an object sat *at or near* it but "behind" its aim — so panning hard left could come out the **right** (and vice‑versa), a speaker could go **silent** right where it should be loudest, and the level **jumped** as the object crossed the gate while DBAP normalisation flooded the other speakers. (This — not the effects engine — was behind the left/right reversal, the lopsided Oscillate, and the "two things fighting" jumps; those all happen with the effect Off too.) The wedge now drops its angular gating in the speaker's **near field**, so it always covers what sits on it, while keeping its directionality at distance. Verified against the reported 8‑speaker room: front L→L, C→C, R→R, sides/rears correct, and **L/R perfectly symmetric**. Fixed identically in the JSFX and the web meters.
 

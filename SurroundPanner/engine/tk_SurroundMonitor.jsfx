@@ -1,4 +1,4 @@
-desc:tk SurroundMonitor v0.25.0
+desc:tk SurroundMonitor v0.26.0
 //  tk Audio Services — rehearsal / headphone fold-down for tkSurroundPanner
 //  Folds the immersive speaker bus to STEREO so you can rehearse on monitors or headphones
 //  without the full rig. Reads the SAME gmem speaker layout as tk SurroundPanner, so every input

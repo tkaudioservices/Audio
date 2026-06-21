@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tkSurroundPanner bridge — tk Audio Services  ·  app v0.25.0
+tkSurroundPanner bridge — tk Audio Services  ·  app v0.26.0
 =========================================================
 
 Connects the web UI to the tkSurroundPanner.lua script running inside REAPER,
@@ -29,7 +29,7 @@ import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = 8
+VERSION = 9
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_ROOT = os.path.dirname(HERE)
 
@@ -43,9 +43,9 @@ def _reaper_resource():
 
 # Shared with tkSurroundPanner.lua, which uses reaper.GetResourcePath()/tkSurroundPanner
 IPC_DIR = os.path.join(_reaper_resource(), "tkSurroundPanner")
-CMDS = SESSION = ROOM = LEVELS = BAKE = AUTOMATION = RENAME = ""
+CMDS = SESSION = ROOM = LEVELS = BAKE = AUTOMATION = RENAME = ENVELOPES = ""
 def _set_paths():
-    global CMDS, SESSION, ROOM, LEVELS, BAKE, AUTOMATION, RENAME
+    global CMDS, SESSION, ROOM, LEVELS, BAKE, AUTOMATION, RENAME, ENVELOPES
     CMDS = os.path.join(IPC_DIR, "cmds.json")
     SESSION = os.path.join(IPC_DIR, "session.json")
     ROOM = os.path.join(IPC_DIR, "room.json")
@@ -53,6 +53,7 @@ def _set_paths():
     BAKE = os.path.join(IPC_DIR, "bake.json")
     AUTOMATION = os.path.join(IPC_DIR, "automation.json")
     RENAME = os.path.join(IPC_DIR, "rename.json")
+    ENVELOPES = os.path.join(IPC_DIR, "envelopes.json")
 _set_paths()
 
 ADDR_RE = re.compile(r"^/track/(\d+)/fx/(\d+)/fxparam/(\d+)/value$")
@@ -129,6 +130,26 @@ class AutomationBox:
         os.replace(tmp, AUTOMATION)
 
 
+class EnvelopeBox:
+    """Writes envelopes.json — enable (read) or disable (bypass) the X/Y/Z automation envelopes
+    on given tracks, using REAPER's native envelope active flag. Lets the generator and a baked/
+    recorded envelope be switched without deleting the envelope, so the two never fight."""
+    def __init__(self):
+        self.seq = 0
+        self.lock = threading.Lock()
+
+    def write(self, action, tracks):
+        action = "enable" if action == "enable" else "disable"
+        nums = ",".join(str(int(t)) for t in tracks)
+        with self.lock:
+            self.seq += 1
+            payload = '{"seq":%d,"action":"%s","tracks":[%s]}' % (self.seq, action, nums)
+        fd, tmp = tempfile.mkstemp(dir=IPC_DIR, suffix=".tmp")
+        with os.fdopen(fd, "w") as fh:
+            fh.write(payload)
+        os.replace(tmp, ENVELOPES)
+
+
 class RenameBox:
     """Writes rename.json — set REAPER track names from the UI. JSON-encoded for safe escaping."""
     def __init__(self):
@@ -150,6 +171,7 @@ class Handler(BaseHTTPRequestHandler):
     mailbox = None
     bakebox = None
     autobox = None
+    envbox = None
     renamebox = None
 
     def _cors(self):
@@ -224,6 +246,10 @@ class Handler(BaseHTTPRequestHandler):
                 d = json.loads(raw)
                 self.autobox.write(d.get("mode", "stop"), d.get("tracks", []))
                 return self._send(200, b'{"ok":true}', "application/json")
+            if path == "/envelopes":                  # enable (read) / disable (bypass) X/Y/Z envelopes
+                d = json.loads(raw)
+                self.envbox.write(d.get("action", "disable"), d.get("tracks", []))
+                return self._send(200, b'{"ok":true}', "application/json")
             if path == "/rename":                      # set REAPER track names
                 d = json.loads(raw)
                 self.renamebox.write(d.get("items", []))
@@ -248,6 +274,7 @@ def main():
     Handler.mailbox = Mailbox()
     Handler.bakebox = BakeBox()
     Handler.autobox = AutomationBox()
+    Handler.envbox = EnvelopeBox()
     Handler.renamebox = RenameBox()
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
 

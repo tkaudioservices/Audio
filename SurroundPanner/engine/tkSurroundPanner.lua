@@ -1,5 +1,5 @@
 --[[
-  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.25.0
+  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.26.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -30,6 +30,7 @@ local ROOM   = IPC .. "/room.json"
 local LEVELS = IPC .. "/levels.json"
 local BAKE   = IPC .. "/bake.json"
 local AUTO   = IPC .. "/automation.json"
+local ENV    = IPC .. "/envelopes.json"
 local RENAME = IPC .. "/rename.json"
 local MATCH = "surroundpanner"   -- matches "JS: tk SurroundPanner", not "ReaSurroundPan"
 local MB     = 1000              -- gmem meter base, matches the JSFX (gmem[MB+ch] = peak per output)
@@ -280,6 +281,38 @@ local function applyAutomation(insts)
   reaper.PreventUIRefresh(-1); reaper.UpdateArrange()
 end
 
+-- enable (read) / disable (bypass) the X/Y/Z FX-parameter envelopes, using REAPER's native
+-- envelope active flag (ACT in the state chunk). This switches a baked/recorded move off WITHOUT
+-- deleting it, and — crucially — lets "Follow FX engine" fully bypass a leftover envelope so the
+-- live generator and the automation never fight. envelopes.json = {"seq":N,"action":"enable"|"disable","tracks":[t,...]}
+local lastEnvSeq = -1
+local function envActive(env, on)
+  local ok, chunk = reaper.GetEnvelopeStateChunk(env, "", false)
+  if not ok then return end
+  chunk = chunk:gsub("(\nACT )%-?%d+", "%1" .. (on and 1 or 0), 1)   -- ACT 1 = play back, 0 = bypass
+  reaper.SetEnvelopeStateChunk(env, chunk, false)
+end
+local function setEnvActive(inst, on)
+  local tr, fx = inst.tr, inst.fx
+  for p = 0, 2 do                                    -- X/Y/Z FX-param envelopes — don't create them (false)
+    local env = reaper.GetFXEnvelope(tr, fx, p, false)
+    if env then envActive(env, on) end
+  end
+end
+local function applyEnvelopes(insts)
+  local s = readfile(ENV); if not s then return end
+  local seq = tonumber(s:match('"seq":(%-?%d+)')); if not seq or seq == lastEnvSeq then return end
+  lastEnvSeq = seq
+  local action = s:match('"action":"(%a+)"') or "disable"
+  local tlist  = s:match('"tracks":%[([%d,%s]*)%]') or ""
+  reaper.PreventUIRefresh(1)
+  for n in tlist:gmatch('(%d+)') do
+    local inst = insts[tonumber(n)]
+    if inst then setEnvActive(inst, action == "enable") end
+  end
+  reaper.PreventUIRefresh(-1); reaper.UpdateArrange()
+end
+
 -- set REAPER track names from the UI -----------------------------
 -- rename.json = {"seq":N,"items":[{"t":T,"name":"..."}]}  (JSON-escaped by the bridge)
 local lastRenameSeq = -1
@@ -397,6 +430,7 @@ local function loop()
     applyCmds(insts)
     applyBake(insts)
     applyAutomation(insts)
+    applyEnvelopes(insts)
     applyRename(insts)
     loadRoom()
     local now = reaper.time_precise()
