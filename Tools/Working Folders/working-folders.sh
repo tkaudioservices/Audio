@@ -24,7 +24,8 @@
 #
 # Change where the shelf lives:  export WORKING_FOLDERS_HUB="$HOME/.../Shelf"
 
-set -u
+# (Deliberately no 'set -u': this is an interactive menu tool, and a single
+# unset variable should never hard-crash it. Important vars use :- defaults.)
 
 HUB="${WORKING_FOLDERS_HUB:-$HOME/Working Folders}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -247,9 +248,9 @@ cmd_setup() {
   ensure_hub
   say "Created your shelf:  $HUB"
   if render_symbol folder "$ICON_SYMBOL" 512 "$HUB"; then
-    say "Gave the shelf the system “$ICON_SYMBOL” line-art icon so it stands out."
+    say "Gave the shelf the system '$ICON_SYMBOL' line-art icon so it stands out."
   else
-    say "(Couldn't auto-apply the icon on this Mac — see “Set the icon by hand”"
+    say "(Couldn't auto-apply the icon on this Mac — see 'Set the icon by hand'"
     say " in the README if you'd like one. The shelf still works fine without.)"
   fi
   say
@@ -262,14 +263,14 @@ cmd_setup() {
     mysides list 2>/dev/null | grep -qi "Working Folders" && pinned="yes"
   fi
   if [ "$pinned" = "yes" ]; then
-    say "Pinned “Working Folders” to your Finder sidebar (Favourites). ✓"
-    say "Don't see it? Hover next to the word “Favourites” in the sidebar and"
-    say "click “Show” — macOS sometimes collapses that whole section."
+    say "Pinned 'Working Folders' to your Finder sidebar (Favourites). ✓"
+    say "Don't see it? Hover next to the word 'Favourites' in the sidebar and"
+    say "click 'Show' — macOS sometimes collapses that whole section."
   else
     say "One-time step — pin the shelf to your sidebar (takes 3 seconds):"
-    say "  1) A Finder window has opened with “Working Folders” highlighted."
-    say "  2) Drag it into the sidebar, under “Favourites”."
-    say "     (No “Favourites” showing? Hover there and click “Show”.)"
+    say "  1) A Finder window has opened with 'Working Folders' highlighted."
+    say "  2) Drag it into the sidebar, under 'Favourites'."
+    say "     (No 'Favourites' showing? Hover there and click 'Show'.)"
     command -v mysides >/dev/null 2>&1 \
       || say "  (Or: 'brew install --cask mysides', then re-run setup, to automate it.)"
   fi
@@ -289,7 +290,7 @@ cmd_build_app() {
     if render_symbol png "$ICON_SYMBOL" 1024 "$iconpng" \
        && make_icns "$iconpng" "$app/Contents/Resources/applet.icns"; then
       touch "$app"
-      say "Gave it the system “$ICON_SYMBOL” line-art icon."
+      say "Gave it the system '$ICON_SYMBOL' line-art icon."
     fi
     rm -rf "$(dirname "$iconpng")"
     say
@@ -367,7 +368,7 @@ cmd_menu() {
     say "  3) List what's on the shelf"
     say "  4) Take a folder off the shelf"
     say "  5) First-time setup (create shelf + pin to the sidebar)"
-    say "  6) Build the drag-&-drop app (“$APP_NAME”)"
+    say "  6) Build the drag-&-drop app ('$APP_NAME')"
     say "  d) Check everything is working (doctor)"
     say "  h) Help / what is this"
     say "  q) Quit"
