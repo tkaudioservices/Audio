@@ -1,5 +1,5 @@
 --[[
-  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.27.0
+  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.28.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -36,6 +36,7 @@ local MATCH = "surroundpanner"   -- matches "JS: tk SurroundPanner", not "ReaSur
 local MB     = 1000              -- gmem meter base, matches the JSFX (gmem[MB+ch] = peak per output)
 local MAXSPK = 16                -- matches the JSFX MAXOUT
 local STRIDE = 9                 -- per-speaker gmem block: x, y, z, lfe, cw, cd, ca, type, beamwidth (matches the JSFX)
+local POSB, POSMARK = 2000, 12345  -- live-position channel: gmem[POSB+track*4 +0..2]=effective x/y/z, +3=marker (matches the JSFX)
 
 local function setstate(on)
   reaper.SetExtState(NS, "live", on and "1" or "0", false)
@@ -342,11 +343,18 @@ local function buildSession()
       local x = reaper.TrackFX_GetParam(tr, fx, 0)
       local y = reaper.TrackFX_GetParam(tr, fx, 1)
       local z = reaper.TrackFX_GetParam(tr, fx, 2)
+      -- effect settings, so a web-UI refresh restores them (the plug-in is the source of truth)
+      local fe = math.floor(reaper.TrackFX_GetParam(tr, fx, 7) + 0.5)
+      local fr = reaper.TrackFX_GetParam(tr, fx, 8)
+      local fd = reaper.TrackFX_GetParam(tr, fx, 9)
+      local fa = math.floor(reaper.TrackFX_GetParam(tr, fx, 10) + 0.5)
+      local fp = reaper.TrackFX_GetParam(tr, fx, 11)
       local nch = math.floor(reaper.GetMediaTrackInfo_Value(tr, "I_NCHAN"))
       objs[#objs + 1] = string.format(
-        '{%s:%s,%s:%s,%s:%s,%s:%.4f,%s:%.4f,%s:%.4f,%s:{%s:%d,%s:%d,%s:4,%s:5,%s:6,%s:7,%s:10,%s:11,%s:12,%s:13,%s:14,%s:15}}',
+        '{%s:%s,%s:%s,%s:%s,%s:%.4f,%s:%.4f,%s:%.4f,%s:%d,%s:%.4f,%s:%.4f,%s:%d,%s:%.4f,%s:{%s:%d,%s:%d,%s:4,%s:5,%s:6,%s:7,%s:10,%s:11,%s:12,%s:13,%s:14,%s:15}}',
         jstr("name"), jstr(track_name(tr)), jstr("color"), jstr(track_color(tr)), jstr("group"), jstr(group),
         jstr("x"), x, jstr("y"), y, jstr("z"), z,
+        jstr("fe"), fe, jstr("fr"), fr, jstr("fd"), fd, jstr("fa"), fa, jstr("fp"), fp,
         jstr("osc"), jstr("track"), oscT, jstr("fx"), fx + 1, jstr("px"), jstr("py"), jstr("pz"), jstr("pg"), jstr("pl"),
         jstr("pe"), jstr("pr"), jstr("pd"), jstr("pa"), jstr("pph"))
       tracks[#tracks + 1] = string.format('{%s:%d,%s:%s,%s:%d}',
@@ -409,6 +417,25 @@ end
 -- live output meters: peak per output channel, read straight from the panner via shared memory.
 -- Decoupled from bus routing, so the web meters match the in-plugin display exactly. Each JSFX
 -- instance maxes its peak into gmem[MB+ch]; we read then clear so each interval shows a fresh peak.
+-- The EFFECTIVE x/y/z the plug-in is actually outputting (base + live effect motion, or the envelope
+-- value while reading automation). The JSFX publishes it to gmem keyed by its slot; we hand each
+-- instance its slot (= track number) via slider14, then read it back — so the web view mirrors the
+-- plug-in exactly, with no second clock to drift. Falls back to the base sliders if the plug-in hasn't
+-- published yet (older JSFX, or not processing), so it degrades to the previous behaviour.
+local function livePos(inst, tnum)
+  if tnum < 1024 then
+    local sv = reaper.TrackFX_GetParam(inst.tr, inst.fx, 13)        -- slider14 = our slot; set it once if wrong
+    if math.floor((sv or -1) + 0.5) ~= tnum then setparam(inst.tr, inst.fx, 13, tnum) end
+    local pb = POSB + tnum * 4
+    if reaper.gmem_read(pb + 3) == POSMARK then
+      return reaper.gmem_read(pb), reaper.gmem_read(pb + 1), reaper.gmem_read(pb + 2)
+    end
+  end
+  return reaper.TrackFX_GetParam(inst.tr, inst.fx, 0),
+         reaper.TrackFX_GetParam(inst.tr, inst.fx, 1),
+         reaper.TrackFX_GetParam(inst.tr, inst.fx, 2)
+end
+
 local function writeLevels(insts)
   local n = roomCount; if n < 1 then n = 2 end
   local t = {}
@@ -416,14 +443,10 @@ local function writeLevels(insts)
     t[#t + 1] = string.format("%.4f", reaper.gmem_read(MB + c))
     reaper.gmem_write(MB + c, 0)
   end
-  -- live X/Y/Z per track (the sliders): during envelope playback these follow the envelope (playhead-
-  -- locked), so the web view can track the plug-in smoothly without the slow 0.5 s session rebuild.
   local p = {}
   for tnum, inst in pairs(insts) do
-    p[#p + 1] = string.format('{"t":%d,"x":%.4f,"y":%.4f,"z":%.4f}', tnum,
-      reaper.TrackFX_GetParam(inst.tr, inst.fx, 0),
-      reaper.TrackFX_GetParam(inst.tr, inst.fx, 1),
-      reaper.TrackFX_GetParam(inst.tr, inst.fx, 2))
+    local x, y, z = livePos(inst, tnum)
+    p[#p + 1] = string.format('{"t":%d,"x":%.4f,"y":%.4f,"z":%.4f}', tnum, x, y, z)
   end
   writefile_atomic(LEVELS, '{"levels":[' .. table.concat(t, ",") .. '],"pos":[' .. table.concat(p, ",") .. ']}')
 end

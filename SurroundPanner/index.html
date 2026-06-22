@@ -98,7 +98,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.27.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.28.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -177,7 +177,7 @@
           </select>
         </div>
         <div class="row"><label>Room · m</label><input type="number" id="rW" step="0.5" min="1" title="Width (X)"><input type="number" id="rD" step="0.5" min="1" title="Depth (Y)"><input type="number" id="rH" step="0.5" min="1" title="Height (Z)"></div>
-        <div class="row"><label>Top view</label><select id="topModeSel" title="Cartesian grid or radial (listener‑centred, L‑ISA/KLANG style)"><option value="cart">Cartesian (X/Y)</option><option value="radial">Radial (listener‑centred)</option></select></div>
+        <div class="row"><label>Top view</label><select id="topModeSel" title="Cartesian grid, or radial rings — a circular‑room / polar view for round venues and theatres‑in‑the‑round (also L‑ISA / KLANG style)"><option value="cart">Cartesian (X/Y)</option><option value="radial">Radial (circular room)</option></select></div>
         <div class="row"><label>Coverage</label><select id="covView" title="Which speakers' coverage footprints to draw in Edit room"><option value="all">Draw all</option><option value="selected">Selected only</option><option value="off">Hidden</option></select></div>
         <div class="hint help">Speakers feed the panner live — speaker <b>#n drives REAPER output channel n</b>, so order matters. In <b>Edit room</b> drag a speaker to move it, or drag the handles on its coverage to shape it. Set <i>Coverage → Selected only</i> to fine‑tune one at a time.</div>
         <div class="grphdr" id="presetHdr" style="display:none"><span class="gn">Your presets</span></div>
@@ -218,7 +218,7 @@
         <div class="row"><label>Focus</label><input type="range" id="pRoll" min="0" max="100" step="1"><span class="val" id="pRollv">43%</span></div>
         <div class="row"><label>Spread</label><input type="range" id="pBlur" min="0" max="100" step="1"><span class="val" id="pBlurv">15%</span></div>
         <div class="row"><label>Depth</label><input type="range" id="pDepth" min="0" max="100" step="1"><span class="val" id="pDepthv">0%</span></div>
-        <div class="hint help">Depth is a near/far cue: objects further from the listener (room centre) get a touch duller (air absorption) and quieter. 0 = off. Distant objects also dim in the view.</div>
+        <div class="hint help">Depth is a near/far cue: objects further from the room centre get a touch duller (air absorption) and quieter. 0 = off. Distant objects also dim in the view.</div>
       </div>
     </div>
 
@@ -381,7 +381,10 @@ function effPos(o){
 // the position to draw an object at. A live effect runs in the plug-in but is NOT written back to the
 // sliders, so we show it from the local simulation (effPos). For objects with no live effect, Follow
 // play shows REAPER's actual position (manual / baked / recorded automation) from o.live.
-const curPos=o=> (state.follow && o.live && !o.effect) ? o.live : effPos(o);
+// When following, show the plug-in's REAL effective position (o.live, streamed at 12 Hz) for every
+// object — free-running effect, envelope read, or manual — so the view mirrors what you hear, with no
+// second clock. effPos (the browser preview) is only the fallback when not following / not connected.
+const curPos=o=> (state.follow && o.live) ? o.live : effPos(o);
 let fxAnim=false;
 const anyEffect=()=>!state.fxPaused && state.objects.some(o=>o.effect>0 && o.visible!==false);
 function fxTick(){ if(!fxAnim) return; render(); updateLiveFaders(); requestAnimationFrame(fxTick); }
@@ -405,8 +408,9 @@ const ctxT=cTop.getContext('2d'), ctxF=cFront.getContext('2d');
 function fit(cv){ const r=cv.parentElement.getBoundingClientRect(); const dpr=window.devicePixelRatio||1;
   cv.width=Math.max(1,r.width*dpr); cv.height=Math.max(1,r.height*dpr); const c=cv.getContext('2d'); c.setTransform(dpr,0,0,dpr,0,0); return {w:r.width,h:r.height}; }
 
-// top view mapping — Cartesian (fills the rect) or Radial (listener centred, polar). Both centre at
-// (cx,cy) with +x right, +y up(front); radial uses an equal scale so the room reads as a circle.
+// top view mapping — Cartesian (fills the rect) or Radial (a circular-room / polar view: rings + spokes,
+// for round venues & theatres in the round). Both centre at (cx,cy) with +x right, +y up(front); radial
+// uses an equal scale so the room reads as a true circle.
 function topScale(w,h){ return state.topMode==='radial'
   ? {cx:w/2, cy:h/2, sx:Math.min(w,h)/2-PAD, sy:Math.min(w,h)/2-PAD}
   : {cx:w/2, cy:h/2, sx:(w-2*PAD)/2, sy:(h-2*PAD)/2}; }
@@ -425,7 +429,7 @@ function drawGrid(ctx,w,h){
   ctx.moveTo(PAD,h/2); ctx.lineTo(w-PAD,h/2);
   ctx.stroke();
 }
-// the top canvas grid: Cartesian rect or Radial (L-ISA/KLANG style — listener centred, rings + spokes)
+// the top canvas grid: Cartesian rect or Radial (circular-room / polar view — concentric rings + spokes)
 function drawTopGrid(ctx,w,h){
   if(state.topMode!=='radial') return drawGrid(ctx,w,h);
   const {cx,cy,sx}=topScale(w,h);
@@ -439,7 +443,7 @@ function drawTopGrid(ctx,w,h){
   ctx.textAlign='center'; ctx.fillText('FRONT', cx, cy-sx-6); ctx.fillText('REAR', cx, cy+sx+12);
   ctx.textAlign='left'; ctx.fillText('R', cx+sx+4, cy+3); ctx.textAlign='right'; ctx.fillText('L', cx-sx-4, cy+3);
   ctx.textAlign='start';
-  // listener at the centre
+  // room centre (reference point)
   ctx.fillStyle='#39c0ed'; ctx.beginPath(); ctx.arc(cx,cy,3,0,Math.PI*2); ctx.fill();
   ctx.strokeStyle='rgba(57,192,237,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,7,0,Math.PI*2); ctx.stroke();
 }
@@ -958,7 +962,7 @@ function pushRoom(){ clearTimeout(roomTimer); roomTimer=setTimeout(()=>{
 function setMode(m){ state.mode=m; const b=$('modeRoom'); if(b) b.classList.toggle('on', m==='room'); render(); }
 $('modeRoom').onclick=()=>setMode(state.mode==='room'?'objects':'room');
 $('topModeSel').onchange=e=>{ state.topMode=e.target.value;
-  $('topLabel').textContent = state.topMode==='radial' ? 'TOP · RADIAL — listener centred · FRONT up' : 'TOP — X (L/R) · Y (FRONT/REAR)';
+  $('topLabel').textContent = state.topMode==='radial' ? 'TOP · RADIAL — circular room · FRONT up' : 'TOP — X (L/R) · Y (FRONT/REAR)';
   render(); };
 
 // Pause FX — freeze every object effect at its base position. In the plug‑in we set Effect=Off
@@ -1023,7 +1027,8 @@ function applyImport(d){
   const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis,phase:o.phase,baked:o.baked,x:o.x,y:o.y,z:o.z}; });
   if(d.objects) state.objects=d.objects;
   state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; if(o.phase==null)o.phase=pf.phase; if(pf.baked){ o.baked=pf.baked; o.envOn=true; }
-    if(pf.effect>0){ o.x=pf.x; o.y=pf.y; o.z=pf.z; } } });   // keep the base for fx objects (their reported X/Y/Z is the live motion)
+    if(pf.effect>0){ o.x=pf.x; o.y=pf.y; o.z=pf.z; } }                  // reconnect: the UI keeps owning the effect/base
+    else if(typeof o.fe==='number'){ o.effect=o.fe; o.rate=o.fr; o.depth=o.fd; o.axis=o.fa; o.phase=o.fp; } });   // fresh load: restore effect settings the plug-in reported, so movement resumes after a refresh
   state.panner=Object.assign(state.panner,d.panner||{});
   const n=state.objects.length||1;
   state.objects.forEach((o,i)=>{

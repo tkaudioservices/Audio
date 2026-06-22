@@ -1,4 +1,4 @@
-desc:tk SurroundPanner v0.27.0
+desc:tk SurroundPanner v0.28.0
 //  tk Audio Services — object panner for tkSurroundPanner
 //  2 in -> up to 16 out. DBAP, matching the web UI's latch-line view.
 //  Speaker layout is read live from shared memory (set by tkSurroundPanner.lua
@@ -21,6 +21,7 @@ slider10:0.3<0,1,0.0001>FX Depth
 slider11:0<0,2,1{X,Y,Z}>FX Axis (Oscillate)
 slider12:0<0,1,0.0001>FX Phase  (cycle offset, for staggering objects)
 slider13:0<0,1,0.0001>Depth cue  (air absorption + distance roll-off)
+slider14:-1<-1,1024,1>-tk live-sync slot (set by the Live script)
 
 in_pin:source L
 in_pin:source R
@@ -51,6 +52,9 @@ NDEF = 12;
 MB = 1000;  // gmem meter base: gmem[MB+ch] = peak per output, shared with the Lua / web UI
             // (well clear of the layout region gmem[1 + i*STRIDE ..], which can reach ~145 at 16 spk)
 STRIDE = 9; // per-speaker gmem block: x, y, z, lfe, cw, cd, ca, type, beamwidth (type: 0 ceiling, 1 wall, 2 sub)
+POSB = 2000;     // live-position base: gmem[POSB + slot*4 + 0..2] = the EFFECTIVE x/y/z this instance is
+POSMARK = 12345; //   currently outputting (incl. effect motion), + a validity marker at +3. slot = track number,
+                 //   handed to us by the Live script via slider14. Lets the web view mirror the plug-in exactly.
 lpk = 1 - exp(-2*$pi*120 / srate);   // 1-pole low-pass coeff (~120 Hz) for the LFE send
 lpz = 0;
 fxphase = 0; drx = 0; dry = 0; dtx = 0; dty = 0; driftn = 0;   // effects-engine LFO + drift state
@@ -179,6 +183,13 @@ slider13 > 0.0001 ? (
   dlpc = 1 - exp(-2*$pi*fc/srate);
   datt = max(0.25, 1 - slider13*od*0.4);
 ) : ( dlpc = 1; datt = 1; );
+// publish this instance's EFFECTIVE position (base + effect motion, or the envelope value) to shared
+// memory, so the web view shows exactly what the plug-in is doing — no second clock, no drift. The
+// Live script hands us our slot (= track number) in slider14; -1 (unset) => don't write.
+slider14 >= 0.5 ? (
+  slot = (slider14 + 0.5)|0;
+  slot < 1024 ? ( pb = POSB + slot*4; gmem[pb] = ex; gmem[pb+1] = ey; gmem[pb+2] = ez; gmem[pb+3] = POSMARK; );
+);
 // publish per-output peaks to shared memory (max across all instances), then decay the hold
 i = 0; loop(NSPK, gmem[MB + i] = max(gmem[MB + i], mpk[i]); mpk[i] *= 0.85; i += 1; );
 

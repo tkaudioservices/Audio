@@ -3,6 +3,12 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.28.0
+- **The view now mirrors the plug‑in exactly — no more drift.** Previously a free‑running effect moved on the plug‑in's own clock while the web view ran its *own* preview clock, so they slid out of sync; and on **refresh** the page forgot the effect entirely (no movement at all). Now the plug‑in **publishes its true effective position** (base + live effect motion, or the envelope value) on the 12 Hz channel, and the view shows *that* — so what you see matches what you hear, for effects, envelope reads, and manual moves alike.
+- **Refresh is safe.** The plug‑in's effect settings (type / rate / depth / axis / phase) are published too, so reloading the web page restores them — the movement carries straight on instead of stopping.
+- **Radial view re‑described.** It's now called **Radial (circular room)** — a circular‑room / polar perspective for round venues and theatres‑in‑the‑round (not just a "listener‑centred" view).
+- *Under the hood: a hidden per‑instance slot (slider14, set by the Live script = track number) lets each plug‑in publish to its own shared‑memory slot; degrades safely to the base sliders if unavailable. Re‑run `tkSurroundPanner.lua` and reload the page after updating.*
+
 ## v0.27.0
 - **The view now tracks the plug‑in automatically (live sync).** The web view follows the plug‑in's actual X/Y/Z, fed through the fast 12 Hz channel, so it **latches on load** and you can *see* what the plug‑in is doing: **reading an envelope** (baked/recorded) animates **locked to the playhead** as REAPER plays; a live **FX engine** shows its free‑running preview; **Enable/Disable env** and **Bake** visibly move the dot. (Previously this only happened if you manually ticked "Follow play".) The old toggle is now **Track plug‑in**, on by default — untick to freeze the view. Display only; it never changes the base.
 - **Movement model, confirmed:** the generator is **free‑running** (good for live performance), envelopes are **playhead‑locked** (standard automation). Bake captures the generator's shape into a playhead‑locked envelope.
