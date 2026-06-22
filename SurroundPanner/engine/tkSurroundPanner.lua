@@ -1,5 +1,5 @@
 --[[
-  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.30.0
+  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.31.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -505,7 +505,8 @@ local function writeLevels(insts)
     local x, y, z = livePos(inst, tnum)
     p[#p + 1] = string.format('{"t":%d,"x":%.4f,"y":%.4f,"z":%.4f}', tnum, x, y, z)
   end
-  writefile_atomic(LEVELS, '{"levels":[' .. table.concat(t, ",") .. '],"pos":[' .. table.concat(p, ",") .. ']}')
+  local play = reaper.GetPlayState()   -- bit 0 = playing, bit 2 = recording
+  writefile_atomic(LEVELS, '{"levels":[' .. table.concat(t, ",") .. '],"pos":[' .. table.concat(p, ",") .. '],"play":' .. play .. '}')
 end
 
 -- main loop -------------------------------------------------------

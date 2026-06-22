@@ -98,7 +98,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.30.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.31.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -284,7 +284,7 @@ let state = {
   bridge:{url:"http://localhost:9000", connected:false, rate:30},
   tracks:[],
   selObj:null, selObjs:[], selSpk:null, mode:"objects", fxPaused:false,
-  cues:[], selCue:null, recording:false, covView:"all", topMode:"cart", follow:true, userPresets:[], gear:null
+  cues:[], selCue:null, recording:false, covView:"all", topMode:"cart", follow:true, userPresets:[], gear:null, playing:false
 };
 let activeDragId=null;   // object id being dragged — the live-position poll won't overwrite it
 
@@ -392,10 +392,11 @@ function effPos(o){
 // the position to draw an object at. A live effect runs in the plug-in but is NOT written back to the
 // sliders, so we show it from the local simulation (effPos). For objects with no live effect, Follow
 // play shows REAPER's actual position (manual / baked / recorded automation) from o.live.
-// When following, show the plug-in's REAL effective position (o.live, streamed at 12 Hz) for every
-// object — free-running effect, envelope read, or manual — so the view mirrors what you hear, with no
-// second clock. effPos (the browser preview) is only the fallback when not following / not connected.
-const curPos=o=> (state.follow && o.live) ? o.live : effPos(o);
+// Following shows the plug-in's REAL streamed position (o.live). But a live FX engine only advances
+// while REAPER is rolling, so when STOPPED we fall back to the browser's free-running preview (effPos)
+// — that's what keeps a free-running effect animating in the view while you edit. Envelope reads and
+// manual positions use o.live whenever following (they're playhead-locked / static, not free-running).
+const curPos=o=> (state.follow && o.live && (!o.effect || state.playing)) ? o.live : effPos(o);
 let fxAnim=false;
 const anyEffect=()=>!state.fxPaused && state.objects.some(o=>o.effect>0 && o.visible!==false);
 function fxTick(){ if(!fxAnim) return; render(); updateLiveFaders(); requestAnimationFrame(fxTick); }
@@ -804,6 +805,7 @@ async function pollLevels(){ if(!state.bridge.connected) return;
   const lv=d.levels||[];
   meterFills.forEach((el,i)=>{ const v=lv[i]||0, p=dbPct(v);
     el.style.width=p+'%'; el.style.background = v>=0.99?'var(--bad)' : (p>80?'var(--warn)':'var(--accent2)'); });
+  state.playing = ((d.play|0) & 1)!==0 || ((d.play|0) & 4)!==0;   // REAPER transport rolling? (gates the live-position follow for free-running effects)
   // Track the plug-in's live X/Y/Z (12 Hz). For objects reading an envelope this is the playhead-locked
   // automation; for a free-running generator the slider sits at the base, so curPos shows the preview instead.
   if(state.follow && Array.isArray(d.pos)){

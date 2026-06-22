@@ -3,6 +3,10 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.31.0
+- **Free-running effects animate in the view again, even when stopped.** v0.28 made the view mirror the plug-in's streamed position — but a live FX engine only advances while the transport rolls, so a stopped effect showed a frozen dot (and grabbing it, then letting go, snapped it back to the frozen value). The view now follows the plug-in's real position **while playing**, and falls back to its own free-running preview **when stopped**, so a Follow-FX object keeps moving in the view as you edit. Envelope reads stay playhead-locked (they sit at the cursor when stopped — press play to see them move).
+- *Note on the bake: verified numerically that the bake reproduces the live effect exactly (centre + full range). If a baked move still looks shorter/offset, it's a mixed install (older Live script) — reinstall + re-run `tkSurroundPanner.lua`; and judge a baked move with the transport **playing**, since a stopped envelope sits at the edit-cursor value.*
+
 ## v0.30.0
 - **Oscillate can sweep at any angle.** New **Angle** control on the Oscillate effect rotates the sweep direction in the horizontal plane — 0° = L/R, 90° = F/R, anything between = a diagonal (Z stays vertical). The preview path, the audio, and the bake all follow it.
 
