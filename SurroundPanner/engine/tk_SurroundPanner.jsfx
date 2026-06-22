@@ -1,4 +1,4 @@
-desc:tk SurroundPanner v0.29.0
+desc:tk SurroundPanner v0.30.0
 //  tk Audio Services — object panner for tkSurroundPanner
 //  2 in -> up to 16 out. DBAP, matching the web UI's latch-line view.
 //  Speaker layout is read live from shared memory (set by tkSurroundPanner.lua
@@ -22,6 +22,7 @@ slider11:0<0,2,1{X,Y,Z}>FX Axis (Oscillate)
 slider12:0<0,1,0.0001>FX Phase  (cycle offset, for staggering objects)
 slider13:0<0,1,0.0001>Depth cue  (air absorption + distance roll-off)
 slider14:-1<-1,1024,1>-tk live-sync slot (set by the Live script)
+slider15:0<0,360,1>FX Angle  (Oscillate sweep direction, 0=L/R 90=F/R)
 
 in_pin:source L
 in_pin:source R
@@ -136,7 +137,7 @@ function calcgains(ox oy oz xblur) local(og roll blur i dx dy dz dd gg ss nn) (
 // for the audio + the @gfx mini-map only. We do NOT write the motion back to the sliders — the base
 // stays clean in slider1/2/3 (what the UI sets and what an automation envelope drives), so the
 // effect never fights the envelopes and the base can't drift. Writes ex/ey/ez/xblur.
-function applyfx() local(ft rate depth ax osc dt ph) (
+function applyfx() local(ft rate depth ax osc dt ph dir) (
   ft = slider8|0; rate = slider9; depth = slider10; ax = slider11|0;
   ex = slider1; ey = slider2; ez = slider3; xblur = 0;
   ft > 0 ? (
@@ -145,9 +146,12 @@ function applyfx() local(ft rate depth ax osc dt ph) (
     ph = fxphase + slider12*2*$pi;                // per-object phase offset (staggered movement)
     ft == 1 ? (                                   // Orbit (X/Y)
       ex = slider1 + depth*cos(ph); ey = slider2 + depth*sin(ph);
-    ) : ft == 2 ? (                               // Oscillate along an axis
+    ) : ft == 2 ? (                               // Oscillate — Z vertical, else sweep along an angle in X/Y
       osc = depth*sin(ph);
-      ax == 0 ? ex = slider1 + osc : ax == 1 ? ey = slider2 + osc : ez = slider3 + osc;
+      ax == 2 ? ( ez = slider3 + osc; ) : (
+        dir = (ax == 1 ? $pi*0.5 : 0) + slider15*$pi/180;   // axis X=0°, Y=90°, + the FX Angle
+        ex = slider1 + osc*cos(dir); ey = slider2 + osc*sin(dir);
+      );
     ) : ft == 3 ? (                               // Spread / size (widen the field)
       xblur = depth*0.5;
     ) : ft == 4 ? (                               // Random drift (smoothed)

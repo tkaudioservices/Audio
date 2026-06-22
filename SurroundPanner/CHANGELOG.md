@@ -3,6 +3,9 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.30.0
+- **Oscillate can sweep at any angle.** New **Angle** control on the Oscillate effect rotates the sweep direction in the horizontal plane — 0° = L/R, 90° = F/R, anything between = a diagonal (Z stays vertical). The preview path, the audio, and the bake all follow it.
+
 ## v0.29.0
 - **Bake now matches the live effect (full range).** The bake centred on the *UI's* base value, per a stale assumption that the sliders held the moving position. They don't — since v0.23 the effect modulates an internal position and the X/Y/Z sliders stay at the base — so the bake now reads the base **straight off the plug‑in**, guaranteeing the baked move has the same centre and full range as what you heard (fixes "FX engine pans L↔R but the bake only does centre→right").
 - **Rig gear panel.** A new **Rig gear** section auto‑detects **tk SurroundMonitor** and **tk SurroundNoise** anywhere in the project and shows their controls in the web UI — monitor fold mode / output / width / LFE, and noise on / speaker / level — sent straight to the plug‑in.

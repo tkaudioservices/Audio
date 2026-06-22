@@ -98,7 +98,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.29.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.30.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -137,6 +137,7 @@
             <div class="row"><label>Rate</label><input type="range" id="oFr" min="0" max="100" step="0.5"><span class="val" id="oFrv">3.3 s</span></div>
             <div class="row"><label>Depth</label><input type="range" id="oFd" min="0" max="1" step="0.01"><span class="val" id="oFdv">0.3</span></div>
             <div class="row"><label>Axis</label><select id="oFa" title="Oscillate axis"><option value="0">X · L/R</option><option value="1">Y · F/R</option><option value="2">Z · Height</option></select></div>
+            <div class="row"><label>Angle</label><input type="range" id="oFang" min="0" max="360" step="1" title="Oscillate sweep direction — 0° = L/R, 90° = F/R, in between = a diagonal. (Z axis ignores this.)"><span class="val" id="oFangv">0°</span></div>
             <div class="row"><label>Phase</label><input type="range" id="oFp" min="0" max="1" step="0.001" title="Offset where this object is in its cycle — stagger several for chasing / flocking motion"><span class="val" id="oFpv">0°</span></div>
             <div class="mini"><button class="btn" id="oStagger" title="Spread the phase evenly across the selected objects, so they move in sequence">Stagger phases</button></div>
           </div>
@@ -383,7 +384,8 @@ function effPos(o){
   const t=(performance.now()-(o.fxT0||0))/1000, ph=2*Math.PI*((o.rate||0)*t + (o.phase||0)), d=o.depth||0;
   let x=o.x,y=o.y,z=o.z;
   if(o.effect===1){ x=o.x+d*Math.cos(ph); y=o.y+d*Math.sin(ph); }                       // orbit
-  else if(o.effect===2){ const s=d*Math.sin(ph); o.axis===0?x+=s:o.axis===1?y+=s:z+=s; } // oscillate
+  else if(o.effect===2){ const s=d*Math.sin(ph);                                        // oscillate (angle rotates the X/Y sweep)
+    if(o.axis===2){ z+=s; } else { const dir=((o.axis===1?90:0)+(o.angle||0))*Math.PI/180; x+=s*Math.cos(dir); y+=s*Math.sin(dir); } }
   else if(o.effect===4){ x=o.x+d*Math.sin(ph*0.7); y=o.y+d*Math.cos(ph*0.53); }          // drift (approx)
   return {x:clamp(x),y:clamp(y),z:clamp(z,0,1)};                                          // effect 3 (spread) doesn't move
 }
@@ -519,7 +521,8 @@ function drawFxPath(ctx,o,w,h){
   ctx.beginPath();
   if(o.effect===1||o.effect===4){ ctx.ellipse(bx,by,Math.max(1,d*sxS),Math.max(1,d*syS),0,0,Math.PI*2); }          // orbit / drift bound
   else if(o.effect===3){ ctx.ellipse(bx,by,Math.max(1,d*0.5*sxS),Math.max(1,d*0.5*syS),0,0,Math.PI*2); }            // spread / size
-  else if(o.effect===2){ o.axis===0 ? (ctx.moveTo(bx-d*sxS,by),ctx.lineTo(bx+d*sxS,by)) : o.axis===1 ? (ctx.moveTo(bx,by-d*syS),ctx.lineTo(bx,by+d*syS)) : ctx.arc(bx,by,4,0,Math.PI*2); }
+  else if(o.effect===2){ if(o.axis===2){ ctx.arc(bx,by,4,0,Math.PI*2); }                  // oscillate: line along the angle (Z = dot)
+    else { const dir=((o.axis===1?90:0)+(o.angle||0))*Math.PI/180, ox=Math.cos(dir)*d*sxS, oy=-Math.sin(dir)*d*syS; ctx.moveTo(bx-ox,by-oy); ctx.lineTo(bx+ox,by+oy); } }
   ctx.stroke(); ctx.restore(); ctx.setLineDash([]);
   // faint anchor at the base position
   ctx.save(); ctx.globalAlpha=0.4; ctx.strokeStyle=o.color; ctx.beginPath(); ctx.arc(bx,by,3,0,Math.PI*2); ctx.stroke(); ctx.restore();
@@ -651,7 +654,7 @@ async function sendObject(o, axes){
 // effects engine params (tags 11-14) — sent together whenever an effect control changes
 async function sendFx(o){ if(!o.osc) return; const m=o.osc;
   const mk=(p,v)=>({addr:`/track/${m.track}/fx/${m.fx}/fxparam/${p}/value`, value:v});
-  await postOSC([mk(m.pe,o.effect||0),mk(m.pr,o.rate||0),mk(m.pd,o.depth||0),mk(m.pa,o.axis||0),mk(m.pph,o.phase||0)]);
+  await postOSC([mk(m.pe,o.effect||0),mk(m.pr,o.rate||0),mk(m.pd,o.depth||0),mk(m.pa,o.axis||0),mk(m.pph,o.phase||0),mk(m.pang||17,o.angle||0)]);
   const h=$('hdrSent'); if(h) h.textContent=`fx → ${o.name||'obj'}: ${['off','orbit','oscillate','spread','drift'][o.effect||0]}`;
   updateFxAnim();
 }
@@ -708,6 +711,7 @@ function syncObjEditor(){
     : 'Envelopes <b>bypassed</b> — this object holds its manual position, nothing driving it. <b>Bake</b> or <b>Enable env</b> to use automation; <b>Follow FX</b> to generate motion.';
   $('oFx').value = useFx ? o.effect : (o.lastFx||1); $('oFr').value=rateToPct(rate); $('oFrv').textContent=rateLabel(rate);
   $('oFd').value=depth; $('oFdv').textContent=xyToM(depth); $('oFa').value=o.axis||0;
+  $('oFang').value=o.angle||0; $('oFangv').textContent=Math.round(o.angle||0)+'°';
   $('oFp').value=o.phase||0; $('oFpv').textContent=Math.round((o.phase||0)*360)+'°';
   const n=state.selObjs.length; const fs=$('fxScope'); if(fs) fs.innerHTML = n>1 ? `<b style="color:var(--accent)">Applying to ${n} objects.</b> ` : '';
   const bs=$('bakeStatus'); if(bs){ const baked=curSet().filter(o=>o.baked); const me=o.baked;
@@ -864,7 +868,8 @@ const allObjs=()=>state.objects.filter(o=>o.osc);
 $('gFx').onclick    =()=>setFollowFx(allObjs());
 $('gEnvOn').onclick =()=>setEnableEnv(allObjs());
 $('gEnvOff').onclick=()=>setDisableEnv(allObjs());
-$('oFa').onchange=e=>{ const v=parseInt(e.target.value,10); applyFxToSel(o=>o.axis=v); };
+$('oFa').onchange=e=>{ const v=parseInt(e.target.value,10); applyFxToSel(o=>o.axis=v); render(); };
+$('oFang').oninput=e=>{ const v=parseFloat(e.target.value); $('oFangv').textContent=Math.round(v)+'°'; applyFxToSel(o=>o.angle=v); render(); };
 $('oFr').oninput=e=>{ const r=pctToRate(parseFloat(e.target.value)); $('oFrv').textContent=rateLabel(r); applyFxToSel(o=>o.rate=r); };
 $('oFd').oninput=e=>{ const d=parseFloat(e.target.value); $('oFdv').textContent=xyToM(d); applyFxToSel(o=>o.depth=d); };
 $('oFp').oninput=e=>{ const p=parseFloat(e.target.value); $('oFpv').textContent=Math.round(p*360)+'°'; applyFxToSel(o=>o.phase=p); };
@@ -1065,11 +1070,11 @@ function applyImport(d){
   if(d.speakers) state.speakers=d.speakers;
   state.gear = d.gear || null;
   // the UI owns the effect settings (the session doesn't carry them) — keep them across a reload
-  const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis,phase:o.phase,baked:o.baked,x:o.x,y:o.y,z:o.z}; });
+  const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis,angle:o.angle,phase:o.phase,baked:o.baked,x:o.x,y:o.y,z:o.z}; });
   if(d.objects) state.objects=d.objects;
-  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; if(o.phase==null)o.phase=pf.phase; if(pf.baked){ o.baked=pf.baked; o.envOn=true; }
+  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; if(o.angle==null)o.angle=pf.angle; if(o.phase==null)o.phase=pf.phase; if(pf.baked){ o.baked=pf.baked; o.envOn=true; }
     if(pf.effect>0){ o.x=pf.x; o.y=pf.y; o.z=pf.z; } }                  // reconnect: the UI keeps owning the effect/base
-    else if(typeof o.fe==='number'){ o.effect=o.fe; o.rate=o.fr; o.depth=o.fd; o.axis=o.fa; o.phase=o.fp; } });   // fresh load: restore effect settings the plug-in reported, so movement resumes after a refresh
+    else if(typeof o.fe==='number'){ o.effect=o.fe; o.rate=o.fr; o.depth=o.fd; o.axis=o.fa; o.phase=o.fp; o.angle=o.fang; } });   // fresh load: restore effect settings the plug-in reported, so movement resumes after a refresh
   state.panner=Object.assign(state.panner,d.panner||{});
   const n=state.objects.length||1;
   state.objects.forEach((o,i)=>{
@@ -1083,14 +1088,16 @@ function applyImport(d){
     if(typeof o.rate!=='number') o.rate=0.3;
     if(typeof o.depth!=='number') o.depth=0.3;
     if(typeof o.axis!=='number') o.axis=0;
+    if(typeof o.angle!=='number') o.angle=0;
     if(typeof o.phase!=='number') o.phase=0;
     if(typeof o.mute!=='boolean') o.mute=false;
     if(typeof o.solo!=='boolean') o.solo=false;
     if(!o.color) o.color=PALETTE[i%PALETTE.length];
-    if(!o.osc) o.osc={track:i+1,fx:1,px:4,py:5,pz:6,pg:7,pl:10,pe:11,pr:12,pd:13,pa:14,pph:15};   // X/Y/Z/Gain/LFE + effect tags
+    if(!o.osc) o.osc={track:i+1,fx:1,px:4,py:5,pz:6,pg:7,pl:10,pe:11,pr:12,pd:13,pa:14,pph:15,pang:17};   // X/Y/Z/Gain/LFE + effect tags
     if(o.osc.pl==null) o.osc.pl=10;                                  // older Live scripts omit these
     if(o.osc.pe==null){ o.osc.pe=11; o.osc.pr=12; o.osc.pd=13; o.osc.pa=14; }
     if(o.osc.pph==null) o.osc.pph=15;
+    if(o.osc.pang==null) o.osc.pang=17;
   });
   // Objects REAPER reports stacked at the exact default origin (never placed) get fanned onto
   // a ring so each is individually grabbable. Objects with a real placement — including
@@ -1156,7 +1163,7 @@ async function autoStart(){
 const CUE_KEY='tkSurroundPanner.cues';
 function snapshot(){ const data={}; state.objects.forEach(o=>{ if(o.osc) data[o.osc.track]={
   x:o.x, y:o.y, z:o.z, gain:o.gain, lfe:o.lfe||0, mute:!!o.mute, solo:!!o.solo,
-  effect:o.effect||0, rate:o.rate==null?0.3:o.rate, depth:o.depth==null?0.3:o.depth, axis:o.axis||0, phase:o.phase||0 }; });
+  effect:o.effect||0, rate:o.rate==null?0.3:o.rate, depth:o.depth==null?0.3:o.depth, axis:o.axis||0, angle:o.angle||0, phase:o.phase||0 }; });
   return data; }
 function persistCues(){ try{ localStorage.setItem(CUE_KEY, JSON.stringify(state.cues)); }catch(e){} }
 function loadCues(){ try{ const s=localStorage.getItem(CUE_KEY); if(s){ const a=JSON.parse(s); if(Array.isArray(a)) state.cues=a; } }catch(e){} }
@@ -1172,7 +1179,7 @@ function recallCue(cue, morphSec){
   if(morphAnim){ cancelAnimationFrame(morphAnim); morphAnim=null; }
   const targets=[]; state.objects.forEach(o=>{ const t=o.osc && cue.data[o.osc.track]; if(t) targets.push([o,t]); });
   const applyDiscrete=()=>{ targets.forEach(([o,t])=>{ o.lfe=t.lfe; o.mute=!!t.mute; o.solo=!!t.solo;
-    o.effect=t.effect; o.rate=t.rate; o.depth=t.depth; o.axis=t.axis; o.phase=t.phase; if(o.osc) sendFx(o); }); sendAllGains(); };
+    o.effect=t.effect; o.rate=t.rate; o.depth=t.depth; o.axis=t.axis; o.angle=t.angle||0; o.phase=t.phase; if(o.osc) sendFx(o); }); sendAllGains(); };
   if(!morphSec){
     targets.forEach(([o,t])=>{ o.x=t.x; o.y=t.y; o.z=t.z; o.gain=t.gain; });
     applyDiscrete(); targets.forEach(([o])=>{ if(o.osc) sendObject(o); });

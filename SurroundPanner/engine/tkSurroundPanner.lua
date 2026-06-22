@@ -1,5 +1,5 @@
 --[[
-  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.29.0
+  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.30.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -161,6 +161,7 @@ local function applyCmds(insts)
       elseif pp == 14 then slider = 10; sval = val          -- FX axis (0..2)          per object
       elseif pp == 15 then slider = 11; sval = val          -- FX phase (0..1)         per object
       elseif pp == 16 then slider = 12; sval = val          -- Depth cue (0..1)        panner law (all objects)
+      elseif pp == 17 then slider = 14; sval = val          -- FX angle (Oscillate, 0..360°)  per object
       end
       if slider then setparam(inst.tr, inst.fx, slider, sval) end
     end
@@ -194,6 +195,7 @@ local function bakeTrack(inst, bx, by, bz)
   local depth = reaper.TrackFX_GetParam(tr, fx, 9)
   local ax    = math.floor(reaper.TrackFX_GetParam(tr, fx, 10) + 0.5)
   local phase = reaper.TrackFX_GetParam(tr, fx, 11)                 -- per-object cycle offset
+  local angle = reaper.TrackFX_GetParam(tr, fx, 14) * math.pi / 180 -- Oscillate sweep direction (rad)
   -- BASE position: read it straight off the plug-in's X/Y/Z sliders. The effect modulates an INTERNAL
   -- position and never writes the motion back to the sliders, so slider1/2/3 ARE the base even while an
   -- effect runs. Baking around this (not the UI's possibly-stale value) makes the baked move match the
@@ -225,9 +227,10 @@ local function bakeTrack(inst, bx, by, bz)
     local ex, ey, ez = bx, by, bz
     if ft == 1 then                         -- Orbit
       ex = bx + depth * math.cos(ph); ey = by + depth * math.sin(ph)
-    elseif ft == 2 then                     -- Oscillate
+    elseif ft == 2 then                     -- Oscillate — Z vertical, else sweep along the angle in X/Y
       local o = depth * math.sin(ph)
-      if ax == 0 then ex = bx + o elseif ax == 1 then ey = by + o else ez = bz + o end
+      if ax == 2 then ez = bz + o
+      else local dir = (ax == 1 and math.pi/2 or 0) + angle; ex = bx + o*math.cos(dir); ey = by + o*math.sin(dir) end
     elseif ft == 4 then                     -- Drift
       if rt >= nextDrift then nextDrift = rt + 0.5; dtx = (rnd() * 2 - 1) * depth; dty = (rnd() * 2 - 1) * depth end
       drx = drx + 0.08 * (dtx - drx); dry = dry + 0.08 * (dty - dry)
@@ -402,14 +405,15 @@ local function buildSession()
       local fd = reaper.TrackFX_GetParam(tr, fx, 9)
       local fa = math.floor(reaper.TrackFX_GetParam(tr, fx, 10) + 0.5)
       local fp = reaper.TrackFX_GetParam(tr, fx, 11)
+      local fang = reaper.TrackFX_GetParam(tr, fx, 14)
       local nch = math.floor(reaper.GetMediaTrackInfo_Value(tr, "I_NCHAN"))
       objs[#objs + 1] = string.format(
-        '{%s:%s,%s:%s,%s:%s,%s:%.4f,%s:%.4f,%s:%.4f,%s:%d,%s:%.4f,%s:%.4f,%s:%d,%s:%.4f,%s:{%s:%d,%s:%d,%s:4,%s:5,%s:6,%s:7,%s:10,%s:11,%s:12,%s:13,%s:14,%s:15}}',
+        '{%s:%s,%s:%s,%s:%s,%s:%.4f,%s:%.4f,%s:%.4f,%s:%d,%s:%.4f,%s:%.4f,%s:%d,%s:%.4f,%s:%.1f,%s:{%s:%d,%s:%d,%s:4,%s:5,%s:6,%s:7,%s:10,%s:11,%s:12,%s:13,%s:14,%s:15,%s:17}}',
         jstr("name"), jstr(track_name(tr)), jstr("color"), jstr(track_color(tr)), jstr("group"), jstr(group),
         jstr("x"), x, jstr("y"), y, jstr("z"), z,
-        jstr("fe"), fe, jstr("fr"), fr, jstr("fd"), fd, jstr("fa"), fa, jstr("fp"), fp,
+        jstr("fe"), fe, jstr("fr"), fr, jstr("fd"), fd, jstr("fa"), fa, jstr("fp"), fp, jstr("fang"), fang,
         jstr("osc"), jstr("track"), oscT, jstr("fx"), fx + 1, jstr("px"), jstr("py"), jstr("pz"), jstr("pg"), jstr("pl"),
-        jstr("pe"), jstr("pr"), jstr("pd"), jstr("pa"), jstr("pph"))
+        jstr("pe"), jstr("pr"), jstr("pd"), jstr("pa"), jstr("pph"), jstr("pang"))
       tracks[#tracks + 1] = string.format('{%s:%d,%s:%s,%s:%d}',
         jstr("track"), oscT, jstr("name"), jstr(track_name(tr)), jstr("nch"), nch)
     end
