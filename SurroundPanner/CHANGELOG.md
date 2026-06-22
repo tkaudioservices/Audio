@@ -3,6 +3,9 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.32.0
+- **Fixed the baked shape (shorter / drifted to a corner).** The bake ran each X/Y/Z point through `ScaleToEnvelopeMode`, which warps a value when the FX-parameter envelope's reported scaling mode isn't linear. On a position envelope that bent the motion — a centred swing came out **compressed**, and a constant axis (e.g. Y held at centre) **drifted toward a corner** — even though the live audio never went through that curve. X/Y/Z are linear position params, so the bake now writes the normalized value **straight in**. The baked move matches the live effect (centre + full range).
+
 ## v0.31.0
 - **Free-running effects animate in the view again, even when stopped.** v0.28 made the view mirror the plug-in's streamed position — but a live FX engine only advances while the transport rolls, so a stopped effect showed a frozen dot (and grabbing it, then letting go, snapped it back to the frozen value). The view now follows the plug-in's real position **while playing**, and falls back to its own free-running preview **when stopped**, so a Follow-FX object keeps moving in the view as you edit. Envelope reads stay playhead-locked (they sit at the cursor when stopped — press play to see them move).
 - *Note on the bake: verified numerically that the bake reproduces the live effect exactly (centre + full range). If a baked move still looks shorter/offset, it's a mixed install (older Live script) — reinstall + re-run `tkSurroundPanner.lua`; and judge a baked move with the transport **playing**, since a stopped envelope sits at the edit-cursor value.*

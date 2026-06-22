@@ -1,5 +1,5 @@
 --[[
-  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.31.0
+  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.32.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -212,7 +212,6 @@ local function bakeTrack(inst, bx, by, bz)
   local envX = reaper.GetFXEnvelope(tr, fx, 0, true)
   local envY = reaper.GetFXEnvelope(tr, fx, 1, true)
   local envZ = reaper.GetFXEnvelope(tr, fx, 2, true)
-  local scX, scY, scZ = reaper.GetEnvelopeScalingMode(envX), reaper.GetEnvelopeScalingMode(envY), reaper.GetEnvelopeScalingMode(envZ)
   reaper.DeleteEnvelopePointRange(envX, t0 - 1e-9, t1 + 1e-9)        -- overwrite any previous bake in range
   reaper.DeleteEnvelopePointRange(envY, t0 - 1e-9, t1 + 1e-9)
   reaper.DeleteEnvelopePointRange(envZ, t0 - 1e-9, t1 + 1e-9)
@@ -240,10 +239,12 @@ local function bakeTrack(inst, bx, by, bz)
     ey = ey < -1 and -1 or (ey > 1 and 1 or ey)
     ez = ez < 0 and 0 or (ez > 1 and 1 or ez)
     local t = t0 + rt
-    -- ScaleToEnvelopeMode keeps the value correct whether the FX envelope is linear or fader-scaled
-    reaper.InsertEnvelopePoint(envX, t, reaper.ScaleToEnvelopeMode(scX, normParam(tr, fx, 0, ex)), 0, 0, false, true)
-    reaper.InsertEnvelopePoint(envY, t, reaper.ScaleToEnvelopeMode(scY, normParam(tr, fx, 1, ey)), 0, 0, false, true)
-    reaper.InsertEnvelopePoint(envZ, t, reaper.ScaleToEnvelopeMode(scZ, normParam(tr, fx, 2, ez)), 0, 0, false, true)
+    -- X/Y/Z are LINEAR position params (-1..1 / 0..1): write the normalized value straight in. (An
+    -- earlier ScaleToEnvelopeMode pass warped these — a constant centre drifted off and the swing
+    -- compressed — because the FX-param envelope's reported scaling mode isn't linear for playback.)
+    reaper.InsertEnvelopePoint(envX, t, normParam(tr, fx, 0, ex), 0, 0, false, true)
+    reaper.InsertEnvelopePoint(envY, t, normParam(tr, fx, 1, ey), 0, 0, false, true)
+    reaper.InsertEnvelopePoint(envZ, t, normParam(tr, fx, 2, ez), 0, 0, false, true)
     k = k + 1
   end
   reaper.Envelope_SortPoints(envX); reaper.Envelope_SortPoints(envY); reaper.Envelope_SortPoints(envZ)
