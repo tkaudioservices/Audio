@@ -3,6 +3,11 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.29.0
+- **Bake now matches the live effect (full range).** The bake centred on the *UI's* base value, per a stale assumption that the sliders held the moving position. They don't — since v0.23 the effect modulates an internal position and the X/Y/Z sliders stay at the base — so the bake now reads the base **straight off the plug‑in**, guaranteeing the baked move has the same centre and full range as what you heard (fixes "FX engine pans L↔R but the bake only does centre→right").
+- **Rig gear panel.** A new **Rig gear** section auto‑detects **tk SurroundMonitor** and **tk SurroundNoise** anywhere in the project and shows their controls in the web UI — monitor fold mode / output / width / LFE, and noise on / speaker / level — sent straight to the plug‑in.
+- **Wider side panel + wrapping buttons** so the three‑way Source / All‑objects rows no longer clip.
+
 ## v0.28.0
 - **The view now mirrors the plug‑in exactly — no more drift.** Previously a free‑running effect moved on the plug‑in's own clock while the web view ran its *own* preview clock, so they slid out of sync; and on **refresh** the page forgot the effect entirely (no movement at all). Now the plug‑in **publishes its true effective position** (base + live effect motion, or the envelope value) on the 12 Hz channel, and the view shows *that* — so what you see matches what you hear, for effects, envelope reads, and manual moves alike.
 - **Refresh is safe.** The plug‑in's effect settings (type / rate / depth / axis / phase) are published too, so reloading the web page restores them — the movement carries straight on instead of stopping.

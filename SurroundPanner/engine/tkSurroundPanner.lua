@@ -1,5 +1,5 @@
 --[[
-  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.28.0
+  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.29.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -31,6 +31,7 @@ local LEVELS = IPC .. "/levels.json"
 local BAKE   = IPC .. "/bake.json"
 local AUTO   = IPC .. "/automation.json"
 local ENV    = IPC .. "/envelopes.json"
+local FXRAW  = IPC .. "/fxraw.json"
 local RENAME = IPC .. "/rename.json"
 local MATCH = "surroundpanner"   -- matches "JS: tk SurroundPanner", not "ReaSurroundPan"
 local MB     = 1000              -- gmem meter base, matches the JSFX (gmem[MB+ch] = peak per output)
@@ -84,6 +85,39 @@ local function instances()
     end
   end
   return list
+end
+
+local function track_by_num(n) return reaper.GetTrack(0, n - 1) end   -- 1-based track number -> MediaTrack
+local function find_fx_named(tr, pat)
+  for i = 0, reaper.TrackFX_GetCount(tr) - 1 do
+    local _, nm = reaper.TrackFX_GetFXName(tr, i, "")
+    if nm:lower():find(pat) then return i end
+  end
+  return -1
+end
+
+-- find the optional rig plug-ins (Monitor fold, Noise generator) anywhere in the project, so the web
+-- UI can surface their controls. Returns a JSON object; monitor/noise are their track+fx and live
+-- param values, or null when not present.
+local function buildGear()
+  local mon, noi = "null", "null"
+  for t = 0, reaper.CountTracks(0) - 1 do
+    local tr = reaper.GetTrack(0, t)
+    local tn = math.floor(reaper.GetMediaTrackInfo_Value(tr, "IP_TRACKNUMBER"))
+    if mon == "null" then
+      local f = find_fx_named(tr, "surroundmonitor")
+      if f >= 0 then mon = string.format('{"track":%d,"fx":%d,"mode":%d,"out":%.2f,"width":%.1f,"lfe":%d}',
+        tn, f, math.floor(reaper.TrackFX_GetParam(tr, f, 0) + 0.5), reaper.TrackFX_GetParam(tr, f, 1),
+        reaper.TrackFX_GetParam(tr, f, 2), math.floor(reaper.TrackFX_GetParam(tr, f, 3) + 0.5)) end
+    end
+    if noi == "null" then
+      local f = find_fx_named(tr, "surroundnoise")
+      if f >= 0 then noi = string.format('{"track":%d,"fx":%d,"on":%d,"ch":%d,"level":%.2f}',
+        tn, f, math.floor(reaper.TrackFX_GetParam(tr, f, 0) + 0.5), math.floor(reaper.TrackFX_GetParam(tr, f, 1) + 0.5),
+        reaper.TrackFX_GetParam(tr, f, 2)) end
+    end
+  end
+  return '{"monitor":' .. mon .. ',"noise":' .. noi .. '}'
 end
 
 -- Set a JSFX slider by its NATIVE value, but go through the *normalized* API so it lands
@@ -160,8 +194,13 @@ local function bakeTrack(inst, bx, by, bz)
   local depth = reaper.TrackFX_GetParam(tr, fx, 9)
   local ax    = math.floor(reaper.TrackFX_GetParam(tr, fx, 10) + 0.5)
   local phase = reaper.TrackFX_GetParam(tr, fx, 11)                 -- per-object cycle offset
-  -- bx/by/bz: the object's BASE position, sent by the UI (the X/Y/Z sliders hold the live, moving
-  -- value while an effect runs, so we can't read the base off the plug-in)
+  -- BASE position: read it straight off the plug-in's X/Y/Z sliders. The effect modulates an INTERNAL
+  -- position and never writes the motion back to the sliders, so slider1/2/3 ARE the base even while an
+  -- effect runs. Baking around this (not the UI's possibly-stale value) makes the baked move match the
+  -- live engine exactly — same centre, full range. (bx/by/bz from the UI are kept only as a fallback.)
+  bx = reaper.TrackFX_GetParam(tr, fx, 0)
+  by = reaper.TrackFX_GetParam(tr, fx, 1)
+  bz = reaper.TrackFX_GetParam(tr, fx, 2)
   local t0, t1 = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
   if t1 <= t0 then t0 = 0; t1 = reaper.GetProjectLength(0) end
   if t1 <= t0 then return false end
@@ -314,6 +353,20 @@ local function applyEnvelopes(insts)
   reaper.PreventUIRefresh(-1); reaper.UpdateArrange()
 end
 
+-- raw FX-parameter set for the optional rig plug-ins (Monitor fold, Noise generator). The web UI
+-- sends native values; setparam normalises against each plug-in's own ranges.
+-- fxraw.json = {"seq":N,"sets":[{"t":T,"f":F,"p":P,"v":V}, ...]}
+local lastFxRawSeq = -1
+local function applyFxRaw()
+  local s = readfile(FXRAW); if not s then return end
+  local seq = tonumber(s:match('"seq":(%-?%d+)')); if not seq or seq == lastFxRawSeq then return end
+  lastFxRawSeq = seq
+  for t, f, p, v in s:gmatch('"t":(%-?%d+),"f":(%-?%d+),"p":(%-?%d+),"v":(%-?%d*%.?%d+)') do
+    local tr = track_by_num(tonumber(t))
+    if tr then setparam(tr, tonumber(f), tonumber(p), tonumber(v)) end
+  end
+end
+
 -- set REAPER track names from the UI -----------------------------
 -- rename.json = {"seq":N,"items":[{"t":T,"name":"..."}]}  (JSON-escaped by the bridge)
 local lastRenameSeq = -1
@@ -364,7 +417,7 @@ local function buildSession()
     elseif depth < 0 then for _ = 1, math.floor(-depth) do stack[#stack] = nil end end
   end
   return '{"project":"Live from REAPER","live":true,"objects":[' .. table.concat(objs, ",") ..
-         '],"tracks":[' .. table.concat(tracks, ",") .. "]}"
+         '],"tracks":[' .. table.concat(tracks, ",") .. '],"gear":' .. buildGear() .. "}"
 end
 
 -- write the web-UI room (room.json) into shared memory for the JSFX
@@ -463,6 +516,7 @@ local function loop()
     applyBake(insts)
     applyAutomation(insts)
     applyEnvelopes(insts)
+    applyFxRaw()
     applyRename(insts)
     loadRoom()
     local now = reaper.time_precise()
