@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tkSurroundPanner bridge — tk Audio Services  ·  app v0.33.0
+tkSurroundPanner bridge — tk Audio Services  ·  app v0.33.1
 =========================================================
 
 Connects the web UI to the tkSurroundPanner.lua script running inside REAPER,
@@ -205,6 +205,7 @@ class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body=b"", ctype="text/plain"):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        self.send_header("Cache-Control", "no-store, must-revalidate")  # never serve a stale web UI
         self._cors()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()

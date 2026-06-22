@@ -3,6 +3,9 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.33.1
+- **No more stale web UI.** The bridge now sends `Cache-Control: no-store`, so a browser reload always loads the current `index.html`/JS instead of a cached copy. (If reloads weren't picking up fixes, this was likely why.)
+
 ## v0.33.0
 - **Bake fixed — for real this time (native values).** The bake wrote the *normalized* 0..1 value to each X/Y/Z envelope, but REAPER plays these FX‑parameter envelopes back as the **native** value — so a centred ±X swing came out compressed and shoved toward +X/+Y (the "shorter / top‑right" you saw). The bake now writes the native slider value straight in, so the baked move matches the live effect exactly. *(v0.31/0.32 changed the scaling call, which was a no‑op here — this is the actual cause.)*
 - **Follow FX animates the view again.** The dot now uses the same free‑running preview as the numeric faders for a live effect (instead of a streamed position that's frozen unless the transport rolls). So a Follow‑FX object animates continuously in the view, and the dot and the X/Y numbers always agree.
