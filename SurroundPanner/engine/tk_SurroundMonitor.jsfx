@@ -1,4 +1,4 @@
-desc:tk SurroundMonitor v0.32.0
+desc:tk SurroundMonitor v0.33.0
 //  tk Audio Services — rehearsal / headphone fold-down for tkSurroundPanner
 //  Folds the immersive speaker bus to STEREO so you can rehearse on monitors or headphones
 //  without the full rig. Reads the SAME gmem speaker layout as tk SurroundPanner, so every input
@@ -15,7 +15,7 @@ desc:tk SurroundMonitor v0.32.0
 
 options:gmem=tkSurroundPanner
 
-slider1:0<0,1,1{Stereo fold,Binaural}>Mode
+slider1:0<0,2,1{Stereo fold,Binaural,Bypass}>Mode
 slider2:0<-24,12,0.1>Output (dB)
 slider3:100<0,150,1>Width (%)
 slider4:1<0,1,1{Drop,Fold in}>LFE
@@ -100,7 +100,7 @@ i = 0; loop(NSPK, tin[i] = spl(i); i += 1; );   // capture inputs first (ch0/1 a
 outL = 0; outR = 0;
 slider1 < 0.5 ? (
   i = 0; loop(NSPK, outL += tin[i]*gL[i]; outR += tin[i]*gR[i]; i += 1; );
-) : (
+) : slider1 < 1.5 ? (
   i = 0; loop(NSPK,
     rg = dring + i*DLEN; rg[wp] = tin[i];
     rl = wp - dLi[i]; rl < 0 ? rl += DLEN; sl = rg[rl];
@@ -111,6 +111,8 @@ slider1 < 0.5 ? (
     i += 1;
   );
   wp += 1; wp >= DLEN ? wp = 0;
+) : (
+  outL = tin[0]; outR = tin[1];                  // Bypass: pass the bed L/R straight, no fold (A/B reference)
 );
 spl(0) = outL*og; spl(1) = outR*og;
 i = 2; loop(MAXSPK-2, spl(i) = 0; i += 1; );    // keep the monitor output clean stereo
@@ -120,7 +122,7 @@ gfx_set(0.04,0.05,0.06,1); gfx_rect(0,0,gfx_w,gfx_h);
 gfx_setfont(1,"Arial",13);
 gfx_set(0.85,0.9,0.95,1); gfx_x=8; gfx_y=8; gfx_drawstr("tk SurroundMonitor");
 gfx_set(0.55,0.60,0.66,1);
-slider1<0.5 ? #m="Stereo fold" : #m="Binaural";
+slider1<0.5 ? #m="Stereo fold" : slider1<1.5 ? #m="Binaural" : #m="Bypass";
 gfx_x=8; gfx_y=32; sprintf(#s,"%s   ·   %d ch in   ·   out %.1f dB", #m, NSPK, slider2); gfx_drawstr(#s);
 gfx_x=8; gfx_y=52; slider1<0.5 ? sprintf(#s,"width %.0f%%   LFE %s", slider3, slider4>0.5?"folded":"dropped")
                                : sprintf(#s,"parametric ITD + head-shadow   LFE %s", slider4>0.5?"folded":"dropped");

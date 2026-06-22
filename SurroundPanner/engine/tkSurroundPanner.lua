@@ -1,5 +1,5 @@
 --[[
-  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.32.0
+  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.33.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -239,12 +239,12 @@ local function bakeTrack(inst, bx, by, bz)
     ey = ey < -1 and -1 or (ey > 1 and 1 or ey)
     ez = ez < 0 and 0 or (ez > 1 and 1 or ez)
     local t = t0 + rt
-    -- X/Y/Z are LINEAR position params (-1..1 / 0..1): write the normalized value straight in. (An
-    -- earlier ScaleToEnvelopeMode pass warped these — a constant centre drifted off and the swing
-    -- compressed — because the FX-param envelope's reported scaling mode isn't linear for playback.)
-    reaper.InsertEnvelopePoint(envX, t, normParam(tr, fx, 0, ex), 0, 0, false, true)
-    reaper.InsertEnvelopePoint(envY, t, normParam(tr, fx, 1, ey), 0, 0, false, true)
-    reaper.InsertEnvelopePoint(envZ, t, normParam(tr, fx, 2, ez), 0, 0, false, true)
+    -- Write the NATIVE slider value (X/Y in -1..1, Z in 0..1) straight to the FX envelope. (Writing the
+    -- normalized 0..1 value made REAPER play it back as the native value — a centred swing came out
+    -- compressed and pushed toward +X/+Y, which is the bug we were chasing.)
+    reaper.InsertEnvelopePoint(envX, t, ex, 0, 0, false, true)
+    reaper.InsertEnvelopePoint(envY, t, ey, 0, 0, false, true)
+    reaper.InsertEnvelopePoint(envZ, t, ez, 0, 0, false, true)
     k = k + 1
   end
   reaper.Envelope_SortPoints(envX); reaper.Envelope_SortPoints(envY); reaper.Envelope_SortPoints(envZ)

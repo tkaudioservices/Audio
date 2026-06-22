@@ -98,7 +98,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.32.0</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.33.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -118,7 +118,7 @@
       <h3>Objects <span class="right"><span class="info" title="Show / hide help">i</span><span class="chev">▾</span></span></h3>
       <div class="body">
         <div class="list" id="objList"></div>
-        <div class="row" id="globalSrc"><label>All objects</label><div class="seg"><button class="btn" id="gFx" title="Every object → built‑in FX engine, with envelopes bypassed in REAPER so nothing fights the generator">Follow FX</button><button class="btn" id="gEnvOn" title="Enable (un‑bypass) every object's X/Y/Z envelopes — read baked / recorded automation">Enable env</button><button class="btn" id="gEnvOff" title="Bypass every object's envelopes in REAPER — hold manual positions">Disable env</button></div></div>
+        <div class="row" id="globalSrc"><label>All objects</label><div class="seg"><button class="btn" id="gFx" title="Every object → built‑in FX engine, with envelopes bypassed in REAPER so nothing fights the generator">Follow FX</button><button class="btn" id="gEnvOn" title="Enable (un‑bypass) every object's X/Y/Z envelopes — read baked / recorded automation">Enable Env.</button><button class="btn" id="gEnvOff" title="Bypass every object's envelopes in REAPER — hold manual positions">Disable Env.</button></div></div>
         <div class="hint help" id="objHint">Objects are your REAPER tracks — they load automatically while <span class="kbd">tkSurroundPanner.lua</span> is running. Editing the name here renames the REAPER track. <b>All objects</b> applies the movement source to every object at once (Enable/Disable use REAPER's envelope bypass).</div>
         <div id="objEditor" style="display:none">
           <div class="row"><label>Name</label><input type="text" id="oName" title="Renames the REAPER track" placeholder="Track name"></div>
@@ -129,7 +129,7 @@
           <div class="row"><label>LFE send</label><input type="range" id="oL" min="-60" max="0" step="0.5"><span class="val" id="oLv">−∞</span></div>
 
           <div class="fxsep">Movement</div>
-          <div class="row"><label>Source</label><div class="seg"><button class="btn toggle" id="mFx" title="Generate motion with the built‑in FX engine; bypasses this object's envelopes so they can't fight it">Follow FX</button><button class="btn toggle" id="mEnvOn" title="Read this object's X/Y/Z automation — baked or recorded envelopes drive it on playback">Enable env</button><button class="btn toggle" id="mEnvOff" title="Bypass this object's envelopes in REAPER — holds its manual position, nothing driving it">Disable env</button></div></div>
+          <div class="row"><label>Source</label><div class="seg"><button class="btn toggle" id="mFx" title="Generate motion with the built‑in FX engine; bypasses this object's envelopes so they can't fight it">Follow FX</button><button class="btn toggle" id="mEnvOn" title="Read this object's X/Y/Z automation — baked or recorded envelopes drive it on playback">Enable Env.</button><button class="btn toggle" id="mEnvOff" title="Bypass this object's envelopes in REAPER — holds its manual position, nothing driving it">Disable Env.</button></div></div>
           <div class="hint help" id="fxEnvNote"></div>
           <div id="fxEngineRows">
             <div class="hint help" style="margin-top:8px"><span id="fxScope"></span>Effect — animates this object in the plug‑in, so it renders to file. Orbit / Oscillate / Drift move it; Spread widens it across more speakers. <span class="pill">Ctrl/Shift‑click the list to select several and shape them together.</span></div>
@@ -389,14 +389,11 @@ function effPos(o){
   else if(o.effect===4){ x=o.x+d*Math.sin(ph*0.7); y=o.y+d*Math.cos(ph*0.53); }          // drift (approx)
   return {x:clamp(x),y:clamp(y),z:clamp(z,0,1)};                                          // effect 3 (spread) doesn't move
 }
-// the position to draw an object at. A live effect runs in the plug-in but is NOT written back to the
-// sliders, so we show it from the local simulation (effPos). For objects with no live effect, Follow
-// play shows REAPER's actual position (manual / baked / recorded automation) from o.live.
-// Following shows the plug-in's REAL streamed position (o.live). But a live FX engine only advances
-// while REAPER is rolling, so when STOPPED we fall back to the browser's free-running preview (effPos)
-// — that's what keeps a free-running effect animating in the view while you edit. Envelope reads and
-// manual positions use o.live whenever following (they're playhead-locked / static, not free-running).
-const curPos=o=> (state.follow && o.live && (!o.effect || state.playing)) ? o.live : effPos(o);
+// The dot to draw an object at. A live FX engine runs free (and isn't written back to the sliders), so
+// we show it from the local preview (effPos) — which animates continuously and matches the numeric
+// faders (updateLiveFaders). Objects with NO live effect follow REAPER's real position (o.live):
+// manual moves and baked/recorded envelopes, playhead-locked.
+const curPos=o=> (state.follow && o.live && !o.effect) ? o.live : effPos(o);
 let fxAnim=false;
 const anyEffect=()=>!state.fxPaused && state.objects.some(o=>o.effect>0 && o.visible!==false);
 function fxTick(){ if(!fxAnim) return; render(); updateLiveFaders(); requestAnimationFrame(fxTick); }
@@ -708,8 +705,8 @@ function syncObjEditor(){
   $('fxEngineRows').style.display = useFx ? 'block' : 'none';
   $('fxEnvNote').style.display    = useFx ? 'none' : 'block';
   $('fxEnvNote').innerHTML = o.envOn
-    ? 'Reading X/Y/Z <b>automation</b> — baked or recorded envelopes drive this object on playback. <b>Disable env</b> bypasses them; <b>Follow FX</b> generates motion instead.'
-    : 'Envelopes <b>bypassed</b> — this object holds its manual position, nothing driving it. <b>Bake</b> or <b>Enable env</b> to use automation; <b>Follow FX</b> to generate motion.';
+    ? 'Reading X/Y/Z <b>automation</b> — baked or recorded envelopes drive this object on playback. <b>Disable Env.</b> bypasses them; <b>Follow FX</b> generates motion instead.'
+    : 'Envelopes <b>bypassed</b> — this object holds its manual position, nothing driving it. <b>Bake</b> or <b>Enable Env.</b> to use automation; <b>Follow FX</b> to generate motion.';
   $('oFx').value = useFx ? o.effect : (o.lastFx||1); $('oFr').value=rateToPct(rate); $('oFrv').textContent=rateLabel(rate);
   $('oFd').value=depth; $('oFdv').textContent=xyToM(depth); $('oFa').value=o.axis||0;
   $('oFang').value=o.angle||0; $('oFangv').textContent=Math.round(o.angle||0)+'°';
@@ -773,9 +770,9 @@ function renderGear(){
   const el=$('gearBody'); if(!el) return; const g=state.gear||{};
   if(!g.monitor && !g.noise){ el.innerHTML='<div class="hint">No monitor or noise plug‑in found. Add <b>JS: tk SurroundMonitor</b> to a stereo monitor track, or <b>JS: tk SurroundNoise</b> to your immersive bus, and they’ll show here.</div>'; return; }
   const P=[];
-  if(g.monitor){ const m=g.monitor;
+  if(g.monitor){ const m=g.monitor, ms=v=>m.mode===v?' selected':'';
     P.push(`<div class="pill" style="margin:6px 0">tk SurroundMonitor · track ${m.track}</div>`);
-    P.push(`<div class="row"><label>Fold</label><select data-g="mon" data-p="0"><option value="0"${m.mode?'':' selected'}>Stereo fold</option><option value="1"${m.mode?' selected':''}>Binaural</option></select></div>`);
+    P.push(`<div class="row"><label>Mode</label><select data-g="mon" data-p="0"><option value="0"${ms(0)}>Stereo fold</option><option value="1"${ms(1)}>Binaural</option><option value="2"${ms(2)}>Bypass</option></select></div>`);
     P.push(`<div class="row"><label>Output</label><input type="range" data-g="mon" data-p="1" data-u="dB" min="-24" max="12" step="0.5" value="${m.out}"><span class="val">${(+m.out).toFixed(1)} dB</span></div>`);
     P.push(`<div class="row"><label>Width</label><input type="range" data-g="mon" data-p="2" data-u="%" min="0" max="150" step="1" value="${m.width}"><span class="val">${Math.round(m.width)}%</span></div>`);
     P.push(`<div class="row"><label>LFE</label><select data-g="mon" data-p="3"><option value="0"${m.lfe?'':' selected'}>Drop</option><option value="1"${m.lfe?' selected':''}>Fold in</option></select></div>`);

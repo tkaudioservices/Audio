@@ -3,6 +3,12 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.33.0
+- **Bake fixed — for real this time (native values).** The bake wrote the *normalized* 0..1 value to each X/Y/Z envelope, but REAPER plays these FX‑parameter envelopes back as the **native** value — so a centred ±X swing came out compressed and shoved toward +X/+Y (the "shorter / top‑right" you saw). The bake now writes the native slider value straight in, so the baked move matches the live effect exactly. *(v0.31/0.32 changed the scaling call, which was a no‑op here — this is the actual cause.)*
+- **Follow FX animates the view again.** The dot now uses the same free‑running preview as the numeric faders for a live effect (instead of a streamed position that's frozen unless the transport rolls). So a Follow‑FX object animates continuously in the view, and the dot and the X/Y numbers always agree.
+- **Monitor: Bypass mode.** tk SurroundMonitor now has **Stereo fold · Binaural · Bypass** — Bypass passes the bed L/R straight through (no fold) for an A/B reference. Shown in the Rig gear panel.
+- **Enable Env. / Disable Env.** buttons are properly capitalised.
+
 ## v0.32.0
 - **Fixed the baked shape (shorter / drifted to a corner).** The bake ran each X/Y/Z point through `ScaleToEnvelopeMode`, which warps a value when the FX-parameter envelope's reported scaling mode isn't linear. On a position envelope that bent the motion — a centred swing came out **compressed**, and a constant axis (e.g. Y held at centre) **drifted toward a corner** — even though the live audio never went through that curve. X/Y/Z are linear position params, so the bake now writes the normalized value **straight in**. The baked move matches the live effect (centre + full range).
 

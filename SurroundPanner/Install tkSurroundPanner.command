@@ -22,7 +22,7 @@ fi
 
 mkdir -p "$RES/Effects/tk"
 if cp engine/tk_SurroundPanner.jsfx engine/tk_SurroundNoise.jsfx engine/tk_SurroundMonitor.jsfx "$RES/Effects/tk/"; then
-  echo "  ✓ Installed  JS: tk SurroundPanner + tk SurroundNoise + tk SurroundMonitor  (v0.32.0)  →  Effects/tk/"
+  echo "  ✓ Installed  JS: tk SurroundPanner + tk SurroundNoise + tk SurroundMonitor  (v0.33.0)  →  Effects/tk/"
   echo
   echo "  In REAPER:"
   echo "   • Add  JS: tk SurroundPanner  (FX browser → tk) to each object track."
