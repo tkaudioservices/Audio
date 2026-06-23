@@ -3,6 +3,10 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.34.0
+- **Movement modes remember the whole setup.** Switching to **Enable/Disable Env.** (or **Bake**) now stores the full generator setup — effect type, rate, depth, axis, angle, phase — and **Follow FX** restores exactly that, so toggling back (or clearing a bake) brings back what you had instead of a default. Survives a UI reload too.
+- **Stacked objects: the one you pick is on top.** When objects overlap, the **top of the list draws on top**, and the **selected** object comes to the very top — so selecting it in the side panel makes it grabbable, and a click on a stack grabs the selected (or top‑of‑list) object.
+
 ## v0.33.1
 - **No more stale web UI.** The bridge now sends `Cache-Control: no-store`, so a browser reload always loads the current `index.html`/JS instead of a cached copy. (If reloads weren't picking up fixes, this was likely why.)
 

@@ -98,7 +98,7 @@
 </head>
 <body>
 <div class="topbar">
-  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.33.1</small></span>
+  <span class="brand"><img class="logo" src="assets/tk-mark-light.svg" alt="tk Audio Services"><span class="name"><span class="tk">tk</span><span class="rest">SurroundPanner</span></span> <small>· tk Audio Services · v0.34.0</small></span>
   <button class="btn toggle" id="modeRoom" title="Drag speakers to shape the room">Edit room</button>
   <button class="btn toggle" id="fxPause" title="Freeze every object effect at its base position (in the UI and the plug‑in)">Pause FX</button>
   <span class="spacer"></span>
@@ -546,8 +546,8 @@ function render(){
   });
   // speakers
   state.speakers.forEach(s=>{ const [sx,sy]=topXY(s.x,s.y,T.w,T.h); drawSpeaker(ctxT,sx,sy,s.name, s.id===state.selSpk); });
-  // objects (drawn at the effective position, with the effect path behind)
-  state.objects.forEach(o=>{ if(o.visible===false) return;
+  // objects (drawn at the effective position, with the effect path behind) — selected drawn on top
+  objDrawOrder().forEach(o=>{
     if(o.effect) drawFxPath(ctxT,o,T.w,T.h);   // generator path (free-running preview); envelope reads have no path
     const p=curPos(o); const [ox,oy]=topXY(p.x,p.y,T.w,T.h), sel=state.selObjs.includes(o.id);
     ctxT.globalAlpha=depthAlpha(p);
@@ -569,7 +569,7 @@ function render(){
     }); ctxF.globalAlpha=1;
   });
   state.speakers.forEach(s=>{ const [sx,sz]=frontXZ(s.x,s.z,F.w,F.h); drawSpeaker(ctxF,sx,sz,s.name, s.id===state.selSpk); });
-  state.objects.forEach(o=>{ if(o.visible===false) return; const p=curPos(o); const [ox,oz]=frontXZ(p.x,p.z,F.w,F.h), sel=state.selObjs.includes(o.id);
+  objDrawOrder().forEach(o=>{ const p=curPos(o); const [ox,oz]=frontXZ(p.x,p.z,F.w,F.h), sel=state.selObjs.includes(o.id);
     ctxF.globalAlpha=depthAlpha(p);
     ctxF.beginPath(); ctxF.arc(ox,oz,sel?8:6,0,7); ctxF.fillStyle=o.color; ctxF.fill();
     if(sel){ ctxF.strokeStyle=o.id===state.selObj?'#fff':'#39c0ed'; ctxF.lineWidth=2; ctxF.stroke(); }
@@ -583,6 +583,11 @@ function pick(list, x, y, mapper, w, h, rad=12){
   list.forEach(it=>{ const [px,py]=mapper(it); const dd=Math.hypot(px-x,py-y); if(dd<bd){bd=dd;best=it;} });
   return best;
 }
+// Draw order for the object dots: the top of the list sits on top, and the selected object comes to the
+// very top — so when objects stack, the one you picked is visibly on top and is the one you grab.
+function objDrawOrder(){ const a=state.objects.filter(o=>o.visible!==false).reverse();   // list-top drawn last (on top)
+  const i=a.findIndex(o=>o.id===state.selObj); if(i>=0) a.push(a.splice(i,1)[0]);          // selected to the very top
+  return a; }
 function bindCanvas(cv, ctx, kind){
   let dragging=null;
   const rect=()=>cv.getBoundingClientRect();
@@ -602,7 +607,11 @@ function bindCanvas(cv, ctx, kind){
       }
     } else {
       const mapO = kind==='top' ? o=>topXY(o.x,o.y,w,h) : o=>frontXZ(o.x,o.z,w,h);
-      const o=pick(state.objects.filter(x=>x.visible!==false),mx,my,mapO,w,h); if(o){ selectObject(o.id); dragging={type:'obj',item:o}; activeDragId=o.id; }
+      // among objects under the cursor, grab the one drawn on top: the selected one if it's here,
+      // otherwise the top of the list (so stacked objects are grabbable as they appear).
+      const hits=state.objects.filter(x=>x.visible!==false).filter(o=>{ const [px,py]=mapO(o); return Math.hypot(px-mx,py-my)<12; });
+      const o = hits.find(x=>x.id===state.selObj) || hits[0];
+      if(o){ selectObject(o.id); dragging={type:'obj',item:o}; activeDragId=o.id; }
     }
     render();
   });
@@ -847,14 +856,20 @@ const selList   = ()=> (curSet().length?curSet():[cur()].filter(Boolean));
 const tracksOf  = list=> list.filter(o=>o.osc).map(o=>o.osc.track);
 const resendBase= list=> list.forEach(o=>{ if(o.osc) sendObject(o); });   // re-assert the UI base after bypassing an envelope
 function applyFxTo(list,setter){ list.forEach(o=>{ setter(o); sendFx(o); }); render(); }
+// Remember the whole generator setup (effect type + rate/depth/axis/angle/phase) when leaving Follow FX,
+// so toggling back to it — or clearing a bake — restores exactly what was running, not a default.
+function rememberFx(o){ if(o.effect>0) o.fxMem={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis,angle:o.angle,phase:o.phase}; }
+function restoreFx(o){ const m=o.fxMem;
+  if(m){ o.effect=m.effect; o.rate=m.rate; o.depth=m.depth; o.axis=m.axis; o.angle=m.angle; o.phase=m.phase; }
+  else if(!o.effect){ o.effect=o.lastFx||1; } }
 async function setFollowFx(list){ const now=performance.now();
-  applyFxTo(list, o=>{ if(!o.effect)o.effect=o.lastFx||1; o.fxT0=now; o.envOn=false; });
+  applyFxTo(list, o=>{ if(!o.effect) restoreFx(o); o.fxT0=now; o.envOn=false; });
   await postEnv('disable', tracksOf(list)); resendBase(list); syncObjEditor(); }
 async function setEnableEnv(list){
-  applyFxTo(list, o=>{ if(o.effect){ o.lastFx=o.effect; o.effect=0; } o.envOn=true; });
+  applyFxTo(list, o=>{ rememberFx(o); o.effect=0; o.envOn=true; });
   await postEnv('enable', tracksOf(list)); syncObjEditor(); }
 async function setDisableEnv(list){
-  applyFxTo(list, o=>{ if(o.effect){ o.lastFx=o.effect; o.effect=0; } o.envOn=false; });
+  applyFxTo(list, o=>{ rememberFx(o); o.effect=0; o.envOn=false; });
   await postEnv('disable', tracksOf(list)); resendBase(list); syncObjEditor(); }
 $('oFx').onchange=async e=>{ const v=parseInt(e.target.value,10), now=performance.now(), list=selList();
   applyFxTo(list, o=>{ o.effect=v; o.lastFx=v; o.fxT0=now; o.envOn=false; });   // picking an engine ⇒ Follow FX
@@ -899,7 +914,7 @@ async function bakeFx(clear){
     const bakeable=list.filter(o=>o.effect>0 && o.effect!==3);
     if(!bakeable.length){ alert('None of the selected objects has a bakeable effect (Orbit / Oscillate / Drift). Spread isn’t a position move.'); return; }
     const ok=await postBake('bake', bakeable.map(o=>({t:o.osc.track, x:o.x, y:o.y, z:o.z})));
-    if(ok){ bakeable.forEach(o=>{ o.baked={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis}; o.effect=0; o.envOn=true; });
+    if(ok){ bakeable.forEach(o=>{ rememberFx(o); o.baked={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis}; o.effect=0; o.envOn=true; });
       if(h) h.textContent='baked '+bakeable.length+' object(s) → X/Y/Z envelopes (render-ready)'; }
     else if(h) h.textContent='bake failed — is the bridge + Live script running?';
   } else {
@@ -1069,9 +1084,9 @@ function applyImport(d){
   if(d.speakers) state.speakers=d.speakers;
   state.gear = d.gear || null;
   // the UI owns the effect settings (the session doesn't carry them) — keep them across a reload
-  const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis,angle:o.angle,phase:o.phase,baked:o.baked,x:o.x,y:o.y,z:o.z}; });
+  const prevFx={}; state.objects.forEach(o=>{ if(o.osc) prevFx[o.osc.track]={effect:o.effect,rate:o.rate,depth:o.depth,axis:o.axis,angle:o.angle,phase:o.phase,baked:o.baked,fxMem:o.fxMem,lastFx:o.lastFx,x:o.x,y:o.y,z:o.z}; });
   if(d.objects) state.objects=d.objects;
-  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; if(o.angle==null)o.angle=pf.angle; if(o.phase==null)o.phase=pf.phase; if(pf.baked){ o.baked=pf.baked; o.envOn=true; }
+  state.objects.forEach(o=>{ const pf=o.osc&&prevFx[o.osc.track]; if(pf){ if(o.effect==null)o.effect=pf.effect; if(o.rate==null)o.rate=pf.rate; if(o.depth==null)o.depth=pf.depth; if(o.axis==null)o.axis=pf.axis; if(o.angle==null)o.angle=pf.angle; if(o.phase==null)o.phase=pf.phase; if(pf.fxMem)o.fxMem=pf.fxMem; if(pf.lastFx)o.lastFx=pf.lastFx; if(pf.baked){ o.baked=pf.baked; o.envOn=true; }
     if(pf.effect>0){ o.x=pf.x; o.y=pf.y; o.z=pf.z; } }                  // reconnect: the UI keeps owning the effect/base
     else if(typeof o.fe==='number'){ o.effect=o.fe; o.rate=o.fr; o.depth=o.fd; o.axis=o.fa; o.phase=o.fp; o.angle=o.fang; } });   // fresh load: restore effect settings the plug-in reported, so movement resumes after a refresh
   state.panner=Object.assign(state.panner,d.panner||{});

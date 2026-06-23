@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tkSurroundPanner bridge — tk Audio Services  ·  app v0.33.1
+tkSurroundPanner bridge — tk Audio Services  ·  app v0.34.0
 =========================================================
 
 Connects the web UI to the tkSurroundPanner.lua script running inside REAPER,
