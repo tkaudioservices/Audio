@@ -65,6 +65,7 @@ button,input,select,textarea{font-family:inherit;font-size:12px}
 .clock-display.running .clock-hms{color:#5cd1f5;text-shadow:0 0 40px rgba(57,192,237,.2)}
 .clock-display.running .clock-fsep,.clock-display.running .clock-ff{color:#4abdd8}
 .clock-display.tc-mode .clock-hms,.clock-display.tc-mode .clock-fsep,.clock-display.tc-mode .clock-ff{color:var(--warn)}
+.clock-display.tc-stale .clock-hms,.clock-display.tc-stale .clock-fsep,.clock-display.tc-stale .clock-ff{color:var(--dim);text-shadow:none}
 
 .ctrl-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center}
 .ctrl-row .btn{padding:7px 18px;font-size:13px}
@@ -344,7 +345,9 @@ const S = {
   fps: 30,
   showName: 'Default Show',
   notes: [],
-  externalTcMs: 0,
+  syncTcMs: 0,       // last received TC in ms
+  lastPacketPerf: 0, // performance.now() when last packet arrived (0 = none yet)
+  staleMs: 4000,     // ms without a packet before the display freezes
 };
 
 // ════════════════════════════════════════════════════════════
@@ -401,7 +404,12 @@ function parseTC(str) {
 }
 
 function getCurrentMs() {
-  if (S.mode === 'timecode') return S.externalTcMs;
+  if (S.mode === 'timecode') {
+    if (!S.lastPacketPerf) return S.syncTcMs;
+    const age = performance.now() - S.lastPacketPerf;
+    // free-roll from last sync; freeze if packets have gone stale
+    return age > S.staleMs ? S.syncTcMs : S.syncTcMs + age;
+  }
   const base = S.offsetMs + S.elapsedMs;
   return S.running ? base + (performance.now() - S.startPerf) : base;
 }
@@ -414,6 +422,13 @@ function tick() {
   $('clockHMS').textContent = hms;
   $('clockFF').textContent = p2(ff);
   $('stampTC').textContent = hms + ':' + p2(ff);
+  if (S.mode === 'timecode') {
+    const age = S.lastPacketPerf ? performance.now() - S.lastPacketPerf : Infinity;
+    const stale = age > S.staleMs;
+    $('clockDisplay').classList.toggle('tc-stale', stale);
+    $('tcDot').className = 'dot' + (S.lastPacketPerf && !stale ? ' ok' : '');
+    $('tcTxt').textContent = !S.lastPacketPerf ? 'not connected' : stale ? 'no signal' : 'live';
+  }
   if (S.running || S.mode === 'timecode') rafId = requestAnimationFrame(tick);
 }
 
@@ -735,6 +750,18 @@ function importJSON(file) {
 }
 
 // ════════════════════════════════════════════════════════════
+// TIMECODE SYNC
+// ════════════════════════════════════════════════════════════
+// Called each time a TC packet arrives from the QSys Core.
+// Snaps the free-roll origin to the received value.
+function onTimecodePacket(tcString) {
+  const ms = parseTC(tcString.trim());
+  if (ms === null) return;
+  S.syncTcMs = ms;
+  S.lastPacketPerf = performance.now();
+}
+
+// ════════════════════════════════════════════════════════════
 // MODE
 // ════════════════════════════════════════════════════════════
 function setMode(mode) {
@@ -748,9 +775,14 @@ function setMode(mode) {
   $('clockDisplay').classList.toggle('tc-mode', isTC);
   if (isTC) {
     stopClock();
+    S.syncTcMs = 0; S.lastPacketPerf = 0;
     $('clockHMS').textContent = '——:——:——';
     $('clockFF').textContent = '——';
     $('stampTC').textContent = '——:——:——:——';
+    $('clockDisplay').classList.remove('tc-stale');
+    $('tcDot').className = 'dot';
+    $('tcTxt').textContent = 'not connected';
+    tick(); // keep display running in TC mode
   } else {
     updateStaticDisplay();
   }
@@ -791,7 +823,11 @@ function init() {
   $('btnModeTC').addEventListener('click', () => setMode('timecode'));
 
   $('btnConnect').addEventListener('click', () => {
-    alert('TCP bridge not yet implemented.\nWill connect to QSys Core via a local WebSocket proxy.');
+    // Future: open WebSocket to a local proxy that bridges QSys TCP → WS.
+    // On each received line: onTimecodePacket(line)
+    // QSys sends a sync packet every 2 s (only when TC is moving).
+    // Browser free-rolls between packets; freezes after 4 s of silence.
+    alert('TCP bridge not yet implemented.\n\nArchitecture: QSys sends a sync packet every 2 s (only while TC is running). The browser free-rolls between packets and freezes if they stop.');
   });
 
   $('showNameInput').addEventListener('change', e => {
