@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tk TC Note Taker</title>
+<style>
+:root {
+  --bg:#0f1216; --panel:#171c22; --panel2:#1e242c; --line:#2a323c;
+  --txt:#e6edf3; --dim:#8b97a3; --accent:#39c0ed; --accent2:#7ee787;
+  --warn:#f0883e; --bad:#f85149;
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--txt);font-family:var(--ui);font-size:13px;overflow:hidden}
+button,input,select,textarea{font-family:inherit;font-size:12px}
+
+/* ── topbar ── */
+.topbar{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line);height:49px;flex:none}
+.brand{display:flex;align-items:center;gap:9px;flex:none}
+.brand .logo{width:30px;height:30px;flex:none;display:block}
+.brand .name{font-weight:700;letter-spacing:.3px}
+.brand .name .tk{color:#be1e2d}
+.brand .name .rest{color:var(--txt)}
+.brand small{color:var(--dim);font-weight:400;margin-left:2px;white-space:nowrap}
+.spacer{flex:1}
+.show-name-wrap{display:flex;align-items:center;gap:6px}
+.show-name-wrap label{color:var(--dim);font-size:11px;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap}
+.show-name-wrap input{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:5px;padding:5px 9px;width:210px;font-size:13px}
+.show-name-wrap input:focus{outline:none;border-color:var(--accent)}
+.show-name-wrap input::placeholder{color:var(--dim)}
+
+/* ── buttons ── */
+.btn{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:5px;padding:6px 10px;cursor:pointer;transition:border-color .1s,background .1s,color .1s}
+.btn:hover{border-color:var(--accent);color:#fff}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#04222c;font-weight:600}
+.btn.primary:hover{background:#5cd1f5;border-color:#5cd1f5}
+.btn.on{background:var(--accent);border-color:var(--accent);color:#04222c;font-weight:600}
+.btn.danger{border-color:var(--bad);color:var(--bad)}
+.btn.danger:hover{background:var(--bad);color:#fff}
+.btn:disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
+.seg{display:flex}
+.seg .btn{border-radius:0;border-right-width:0;padding:6px 12px}
+.seg .btn:first-child{border-radius:5px 0 0 5px}
+.seg .btn:last-child{border-radius:0 5px 5px 0;border-right-width:1px}
+
+/* ── status indicator ── */
+.status{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--bad);flex:none}
+.dot.ok{background:var(--accent2)}
+.dot.warn{background:var(--warn)}
+
+/* ── layout ── */
+.layout{display:flex;height:calc(100% - 49px)}
+
+/* ── main panel ── */
+.main{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+
+/* ── clock section ── */
+.clock-section{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px 20px;background:var(--panel);border-bottom:1px solid var(--line);gap:16px}
+.clock-display{display:flex;align-items:baseline;gap:2px}
+.clock{font-family:var(--mono);font-size:76px;font-weight:700;letter-spacing:6px;color:var(--accent);line-height:1;user-select:none;transition:color .2s}
+.clock.running{color:#5cd1f5;text-shadow:0 0 40px rgba(57,192,237,.25)}
+.clock.tc-mode{color:var(--warn)}
+.clock-cs{font-family:var(--mono);font-size:30px;font-weight:400;color:var(--dim);line-height:1;min-width:46px;transition:color .2s}
+.ctrl-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center}
+.ctrl-row .btn{padding:7px 18px;font-size:13px}
+.offset-group{display:flex;align-items:center;gap:6px;margin-left:8px;padding-left:8px;border-left:1px solid var(--line)}
+.offset-group label{color:var(--dim);font-size:11px;white-space:nowrap;letter-spacing:.3px}
+.offset-group input{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:4px;padding:5px 8px;width:95px;font-family:var(--mono);font-size:14px;text-align:center}
+.offset-group input:focus{outline:none;border-color:var(--accent)}
+.tc-conn-group{display:flex;align-items:center;gap:8px}
+.tc-conn-group label{color:var(--dim);font-size:11px;white-space:nowrap}
+.tc-conn-group input[type=text]{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:4px;padding:5px 8px;width:160px;font-family:var(--mono);font-size:13px}
+.tc-conn-group input[type=number]{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:4px;padding:5px 8px;width:70px;font-family:var(--mono);font-size:13px;text-align:center}
+.tc-conn-group input:focus{outline:none;border-color:var(--accent)}
+.tc-stub-note{font-size:11px;color:var(--dim);font-style:italic}
+
+/* ── entry section ── */
+.entry-section{flex:none;padding:11px 16px;background:var(--bg);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.entry-badge{font-family:var(--mono);font-size:13px;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:7px 10px;color:var(--accent);white-space:nowrap;flex:none;min-width:88px;text-align:center;user-select:none}
+.entry-input{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:5px;padding:8px 12px;font-size:14px}
+.entry-input:focus{outline:none;border-color:var(--accent)}
+.entry-input::placeholder{color:var(--dim)}
+.kbd-hint{font-size:11px;color:var(--dim);white-space:nowrap;display:flex;align-items:center;gap:4px}
+kbd{font-family:var(--mono);background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;border-radius:3px;padding:1px 5px;font-size:10px;color:var(--txt)}
+
+/* ── notes area ── */
+.notes-area{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:5px}
+.empty-msg{color:var(--dim);font-size:13px;text-align:center;margin-top:48px;line-height:1.8}
+.empty-msg strong{display:block;font-size:15px;color:var(--txt);margin-bottom:4px}
+.note-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+.note-item:hover{border-color:#38424e}
+.note-item.done{opacity:.48}
+.note-chk{flex:none;width:16px;height:16px;margin-top:2px;accent-color:var(--accent2);cursor:pointer}
+.note-tc{font-family:var(--mono);font-size:12px;color:var(--accent);flex:none;background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:2px 7px;white-space:nowrap;user-select:none;margin-top:1px}
+.note-item.done .note-tc{color:var(--dim)}
+.note-text{flex:1;background:transparent;border:none;color:var(--txt);font-size:13px;resize:none;min-height:20px;height:20px;overflow:hidden;line-height:1.5;padding:0}
+.note-text:focus{outline:none}
+.note-item.done .note-text{text-decoration:line-through;color:var(--dim)}
+.note-del{flex:none;background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;margin-top:-1px;opacity:.5}
+.note-del:hover{color:var(--bad);opacity:1}
+
+/* ── notes toolbar ── */
+.notes-toolbar{flex:none;display:flex;align-items:center;gap:8px;padding:8px 16px 0;border-top:1px solid var(--line);background:var(--bg)}
+.notes-count{font-family:var(--mono);font-size:11px;color:var(--dim)}
+
+/* ── sidebar ── */
+.side{width:280px;background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;display:flex;flex-direction:column;flex:none}
+.sect{border-bottom:1px solid var(--line)}
+.sect h3{margin:0;padding:10px 12px;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none}
+.sect h3:hover{color:var(--txt)}
+.sect h3 .right{display:flex;align-items:center;gap:6px}
+.sect h3 .chev{font-size:13px;transition:transform .15s}
+.sect.collapsed h3 .chev{transform:rotate(-90deg)}
+.sect .body{padding:8px 12px 14px}
+.sect.collapsed .body{display:none}
+
+/* ── show list ── */
+.show-list{display:flex;flex-direction:column;gap:4px;margin-bottom:10px;max-height:190px;overflow-y:auto}
+.show-item{display:flex;align-items:center;gap:8px;padding:7px 9px;background:var(--panel2);border:1px solid var(--line);border-radius:5px;cursor:pointer;transition:border-color .1s}
+.show-item:hover{border-color:#38424e}
+.show-item.sel{border-color:var(--accent)}
+.show-item .show-nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.show-item .show-cnt{font-family:var(--mono);font-size:10px;color:var(--dim);flex:none}
+.mini{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.mini .btn{flex:1;text-align:center;padding:6px 8px;font-size:12px;min-width:0}
+.subhdr{font-size:10px;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim);margin:12px 0 8px;border-top:1px solid var(--line);padding-top:10px}
+.hint{color:var(--dim);font-size:11px;line-height:1.6;margin:4px 0}
+
+/* ── stats ── */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.stat-box{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:10px;text-align:center}
+.stat-val{font-family:var(--mono);font-size:26px;line-height:1}
+.stat-lbl{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-top:3px}
+.progress-wrap{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:10px}
+.progress-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.progress-lbl{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px}
+.progress-pct{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.progress-bar-bg{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.progress-bar-fill{height:100%;width:0%;background:var(--accent2);border-radius:3px;transition:width .4s}
+
+/* ── quick checklist ── */
+.quick-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.quick-item:last-child{border-bottom:none}
+.quick-chk{width:14px;height:14px;accent-color:var(--accent2);flex:none;cursor:pointer}
+.quick-nm{flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.quick-nm.done{text-decoration:line-through;color:var(--dim)}
+.quick-tc{font-family:var(--mono);font-size:10px;color:var(--dim);flex:none}
+
+/* ── scrollbar ── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--dim)}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- TOPBAR                                                          -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<div class="topbar">
+  <span class="brand">
+    <!-- tk Audio Services mark (inlined) -->
+    <svg class="logo" viewBox="0 0 1400 1400" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+      <defs>
+        <clipPath id="cl"><path transform="matrix(1,0,0,-1,0,1400)" d="M0 1400H1400V0H0Z"/></clipPath>
+        <path id="gt" d="M.18261719.37304688V0H.072753909V.37304688H.025878907V.47558595H.072753909V.64990237H.18261719V.47558595H.2680664V.37304688H.18261719Z"/>
+        <path id="gk" d="M.17919922.82470706V.32177735L.33398438.47558595H.4814453L.27490235.2758789.49658204 0H.3540039L.19677735.2006836.17919922.18310547V0H.06933594V.82470706H.17919922Z"/>
+      </defs>
+      <g clip-path="url(#cl)">
+        <use xlink:href="#gt" transform="matrix(1125.5385,0,0,-1125.5385,-1249.0293,1048.8858)" fill="#231f20"/>
+        <use xlink:href="#gk" transform="matrix(1125.5385,0,0,-1125.5385,-941.7573,1048.8858)" fill="#231f20"/>
+        <use xlink:href="#gt" transform="matrix(1125.5385,0,0,-1125.5385,273.82423,1048.8858)" fill="#ffffff"/>
+        <use xlink:href="#gk" transform="matrix(1125.5385,0,0,-1125.5385,581.0962,1048.8858)" fill="#ffffff"/>
+        <path transform="matrix(1,0,0,-1,1304.9024,700.0001)" stroke-width="60" stroke-linecap="butt" stroke-miterlimit="10" fill="none" stroke="#be1e2d" d="M0 0C0-334.078-270.824-604.902-604.902-604.902-938.98-604.902-1209.805-334.078-1209.805 0-1209.805 334.078-938.98 604.902-604.902 604.902-270.824 604.902 0 334.078 0 0Z"/>
+      </g>
+    </svg>
+    <span class="name"><span class="tk">tk</span><span class="rest"> TC Note Taker</span></span>
+    <small>· tk Audio Services · v1.0</small>
+  </span>
+
+  <div class="show-name-wrap">
+    <label>Show</label>
+    <input type="text" id="showNameInput" placeholder="Show name…" autocomplete="off" spellcheck="false">
+  </div>
+
+  <span class="spacer"></span>
+
+  <div class="seg">
+    <button class="btn on" id="btnModeStop" title="Internal stopwatch">Stopwatch</button>
+    <button class="btn" id="btnModeTC" title="Sync to QSys Core timecode (coming soon)">Timecode</button>
+  </div>
+
+  <div class="status" id="tcStatus" style="display:none">
+    <span class="dot" id="tcDot"></span>
+    <span id="tcTxt">not connected</span>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- MAIN LAYOUT                                                     -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<div class="layout">
+
+  <!-- ── LEFT: clock + entry + notes ── -->
+  <div class="main">
+
+    <!-- Clock section -->
+    <div class="clock-section">
+      <div class="clock-display">
+        <div class="clock" id="clock">00:00:00</div>
+        <div class="clock-cs" id="clockCs">.00</div>
+      </div>
+
+      <!-- Stopwatch controls -->
+      <div class="ctrl-row" id="swControls">
+        <button class="btn primary" id="btnStartStop" style="min-width:100px">Start</button>
+        <button class="btn" id="btnReset">Reset</button>
+        <div class="offset-group">
+          <label>Start at</label>
+          <input type="text" id="offsetInput" value="00:00:00" placeholder="HH:MM:SS" spellcheck="false">
+          <button class="btn" id="btnSetOffset">Set</button>
+        </div>
+      </div>
+
+      <!-- Timecode connection controls (future) -->
+      <div class="ctrl-row" id="tcControls" style="display:none">
+        <div class="tc-conn-group">
+          <label>Host</label>
+          <input type="text" id="tcHost" placeholder="192.168.1.100" spellcheck="false">
+          <label>Port</label>
+          <input type="number" id="tcPort" value="1710" min="1" max="65535">
+          <button class="btn primary" id="btnConnect" disabled>Connect</button>
+        </div>
+        <span class="tc-stub-note">TCP bridge implementation coming soon</span>
+      </div>
+    </div>
+
+    <!-- Entry row -->
+    <div class="entry-section">
+      <div class="entry-badge" id="entryBadge">00:00:00</div>
+      <input type="text" class="entry-input" id="noteInput"
+        placeholder="Type a note and press Enter to stamp it at the current timecode…"
+        autocomplete="off" spellcheck="false">
+      <span class="kbd-hint"><kbd>↵</kbd> stamp</span>
+      <button class="btn primary" id="btnStamp">Stamp</button>
+    </div>
+
+    <!-- Notes list -->
+    <div class="notes-area" id="notesArea">
+      <div class="empty-msg" id="emptyMsg">
+        <strong>No notes yet</strong>
+        Start the clock, then hit <kbd style="font-family:var(--mono);background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:2px 6px">Enter</kbd> to stamp a note at the current timecode
+      </div>
+    </div>
+
+    <!-- Notes toolbar (shown when notes exist) -->
+    <div class="notes-toolbar" id="notesToolbar" style="display:none">
+      <span class="notes-count" id="notesCount">0 notes</span>
+      <span class="spacer"></span>
+      <button class="btn" id="btnClearDone" style="font-size:11px;padding:4px 8px">Clear done</button>
+    </div>
+
+  </div><!-- /main -->
+
+  <!-- ── RIGHT: sidebar ── -->
+  <div class="side">
+
+    <!-- Shows -->
+    <div class="sect" id="sShows">
+      <h3>Shows <span class="right"><span class="chev">▾</span></span></h3>
+      <div class="body">
+        <div class="show-list" id="showList">
+          <p style="color:var(--dim);font-size:12px;margin:4px 0">No saved shows</p>
+        </div>
+        <div class="mini">
+          <button class="btn" id="btnNewShow">+ New</button>
+          <button class="btn danger" id="btnDelShow">Delete</button>
+        </div>
+        <div class="subhdr">Export / Import</div>
+        <div class="mini">
+          <button class="btn" id="btnExportJSON">JSON</button>
+          <button class="btn" id="btnExportCSV">CSV</button>
+          <label class="btn" for="importFile" style="text-align:center;cursor:pointer">Import</label>
+          <input type="file" id="importFile" accept=".json" style="display:none">
+        </div>
+        <p class="hint">Import replaces the current show's notes.</p>
+      </div>
+    </div>
+
+    <!-- Summary / stats -->
+    <div class="sect" id="sSummary">
+      <h3>Summary <span class="right"><span class="chev">▾</span></span></h3>
+      <div class="body">
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-val" id="statTotal" style="color:var(--accent)">0</div>
+            <div class="stat-lbl">Total</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="statDone" style="color:var(--accent2)">0</div>
+            <div class="stat-lbl">Done</div>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-hdr">
+            <span class="progress-lbl">Progress</span>
+            <span class="progress-pct" id="statPct">0%</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progressBar"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick checklist -->
+    <div class="sect collapsed" id="sChecklist">
+      <h3>Quick Checklist <span class="right"><span class="chev">▾</span></span></h3>
+      <div class="body">
+        <div id="quickList"></div>
+      </div>
+    </div>
+
+  </div><!-- /side -->
+
+</div><!-- /layout -->
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════════════════════════
+const S = {
+  mode: 'stopwatch',   // 'stopwatch' | 'timecode'
+  running: false,
+  startPerf: 0,        // performance.now() snapshot when last started
+  elapsedMs: 0,        // accumulated ms before last pause
+  offsetMs: 0,         // clock offset (start-at value) in ms
+  showName: 'Default Show',
+  notes: [],
+  tcSocket: null,
+  externalTcMs: 0,
+};
+
+// ════════════════════════════════════════════════════════════════════
+// STORAGE
+// ════════════════════════════════════════════════════════════════════
+const STORE_KEY = 'tk-tc-notes-v1';
+
+function loadStore() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function saveStore() {
+  const store = loadStore();
+  if (!store.shows) store.shows = {};
+  store.shows[S.showName] = {
+    notes: S.notes,
+    updated: Date.now(),
+    created: store.shows[S.showName]?.created ?? Date.now(),
+  };
+  store.lastShow = S.showName;
+  localStorage.setItem(STORE_KEY, JSON.stringify(store));
+}
+
+function loadShow(name) {
+  const store = loadStore();
+  S.showName = (name || store.lastShow || 'Default Show');
+  if (!store.shows) store.shows = {};
+  S.notes = store.shows[S.showName]?.notes ?? [];
+  if (!store.shows[S.showName]) saveStore();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CLOCK
+// ════════════════════════════════════════════════════════════════════
+let rafId = null;
+
+function p2(n) { return String(Math.floor(n)).padStart(2, '0'); }
+
+function msToTC(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${p2(s / 3600)}:${p2((s % 3600) / 60)}:${p2(s % 60)}`;
+}
+
+function parseTC(str) {
+  const parts = str.trim().split(':').map(Number);
+  if (parts.some(isNaN)) return null;
+  if (parts.length === 3) return ((parts[0] * 3600) + (parts[1] * 60) + parts[2]) * 1000;
+  if (parts.length === 2) return ((parts[0] * 60) + parts[1]) * 1000;
+  if (parts.length === 1) return parts[0] * 1000;
+  return null;
+}
+
+function getCurrentMs() {
+  if (S.mode === 'timecode') return S.externalTcMs;
+  const base = S.offsetMs + S.elapsedMs;
+  return S.running ? base + (performance.now() - S.startPerf) : base;
+}
+
+function tick() {
+  const ms = getCurrentMs();
+  const tc = msToTC(ms);
+  const cs = Math.floor((ms % 1000) / 10);
+  $('clock').textContent = tc;
+  $('clockCs').textContent = '.' + p2(cs);
+  $('entryBadge').textContent = tc;
+  if (S.running || S.mode === 'timecode') rafId = requestAnimationFrame(tick);
+}
+
+function startClock() {
+  if (S.running) return;
+  S.running = true;
+  S.startPerf = performance.now();
+  $('btnStartStop').textContent = 'Stop';
+  $('btnStartStop').classList.remove('primary');
+  $('btnStartStop').classList.add('on');
+  $('clock').classList.add('running');
+  tick();
+}
+
+function stopClock() {
+  if (!S.running) return;
+  S.elapsedMs += performance.now() - S.startPerf;
+  S.running = false;
+  cancelAnimationFrame(rafId);
+  $('btnStartStop').textContent = 'Start';
+  $('btnStartStop').classList.add('primary');
+  $('btnStartStop').classList.remove('on');
+  $('clock').classList.remove('running');
+}
+
+function resetClock() {
+  const was = S.running;
+  if (was) stopClock();
+  S.elapsedMs = 0;
+  S.startPerf = 0;
+  updateClockDisplay();
+  if (was) startClock();
+}
+
+function updateClockDisplay() {
+  const ms = getCurrentMs();
+  $('clock').textContent = msToTC(ms);
+  $('clockCs').textContent = '.00';
+  $('entryBadge').textContent = msToTC(ms);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// NOTES — DOM helpers
+// ════════════════════════════════════════════════════════════════════
+function $(id) { return document.getElementById(id); }
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function autoSize(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = ta.scrollHeight + 'px';
+}
+
+function createNoteEl(note) {
+  const el = document.createElement('div');
+  el.className = 'note-item' + (note.done ? ' done' : '');
+  el.dataset.id = note.id;
+
+  const chk = document.createElement('input');
+  chk.type = 'checkbox';
+  chk.className = 'note-chk';
+  chk.checked = note.done;
+  chk.title = 'Mark as ' + (note.done ? 'pending' : 'done');
+  chk.addEventListener('change', () => toggleNote(note.id));
+
+  const badge = document.createElement('span');
+  badge.className = 'note-tc';
+  badge.textContent = note.tc;
+  badge.title = note.tc;
+
+  const txt = document.createElement('textarea');
+  txt.className = 'note-text';
+  txt.value = note.text;
+  txt.rows = 1;
+  txt.spellcheck = true;
+  txt.placeholder = '(no text)';
+  txt.addEventListener('input', () => {
+    autoSize(txt);
+    note.text = txt.value;
+    saveStore();
+  });
+  txt.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      $('noteInput').focus();
+    }
+    if (e.key === 'Escape') $('noteInput').focus();
+  });
+
+  const del = document.createElement('button');
+  del.className = 'note-del';
+  del.textContent = '×';
+  del.title = 'Delete this note';
+  del.addEventListener('click', () => deleteNote(note.id));
+
+  el.appendChild(chk);
+  el.appendChild(badge);
+  el.appendChild(txt);
+  el.appendChild(del);
+  return el;
+}
+
+function renderNotes() {
+  const area = $('notesArea');
+  area.querySelectorAll('.note-item').forEach(el => el.remove());
+  $('emptyMsg').style.display = S.notes.length ? 'none' : '';
+  S.notes.forEach(note => {
+    const el = createNoteEl(note);
+    area.appendChild(el);
+    requestAnimationFrame(() => autoSize(el.querySelector('.note-text')));
+  });
+  updateToolbar();
+  updateStats();
+  renderQuickList();
+  renderShowList();
+}
+
+function appendNoteEl(note) {
+  $('emptyMsg').style.display = 'none';
+  const area = $('notesArea');
+  const el = createNoteEl(note);
+  area.appendChild(el);
+  requestAnimationFrame(() => {
+    autoSize(el.querySelector('.note-text'));
+    area.scrollTop = area.scrollHeight;
+  });
+  updateToolbar();
+  updateStats();
+  renderQuickList();
+}
+
+function removeNoteEl(id) {
+  const el = document.querySelector(`.note-item[data-id="${id}"]`);
+  if (el) el.remove();
+  if (!S.notes.length) $('emptyMsg').style.display = '';
+  updateToolbar();
+  updateStats();
+  renderQuickList();
+}
+
+function refreshNoteEl(id) {
+  const note = S.notes.find(n => n.id === id);
+  const el = document.querySelector(`.note-item[data-id="${id}"]`);
+  if (!note || !el) return;
+  el.classList.toggle('done', note.done);
+  const chk = el.querySelector('.note-chk');
+  chk.checked = note.done;
+  chk.title = 'Mark as ' + (note.done ? 'pending' : 'done');
+  updateStats();
+  renderQuickList();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// NOTES — data operations
+// ════════════════════════════════════════════════════════════════════
+function stampNote(text) {
+  const ms = getCurrentMs();
+  const note = {
+    id: 'n' + Date.now(),
+    tc: msToTC(ms),
+    tcMs: ms,
+    text: text.trim(),
+    done: false,
+    created: Date.now(),
+  };
+  S.notes.push(note);
+  saveStore();
+  appendNoteEl(note);
+}
+
+function deleteNote(id) {
+  S.notes = S.notes.filter(n => n.id !== id);
+  saveStore();
+  removeNoteEl(id);
+}
+
+function toggleNote(id) {
+  const note = S.notes.find(n => n.id === id);
+  if (!note) return;
+  note.done = !note.done;
+  saveStore();
+  refreshNoteEl(id);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// UI UPDATES
+// ════════════════════════════════════════════════════════════════════
+function updateToolbar() {
+  const hasDone = S.notes.some(n => n.done);
+  $('notesToolbar').style.display = S.notes.length ? 'flex' : 'none';
+  $('btnClearDone').style.display = hasDone ? '' : 'none';
+  $('notesCount').textContent = S.notes.length + ' note' + (S.notes.length !== 1 ? 's' : '');
+}
+
+function updateStats() {
+  const total = S.notes.length;
+  const done = S.notes.filter(n => n.done).length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  $('statTotal').textContent = total;
+  $('statDone').textContent = done;
+  $('statPct').textContent = pct + '%';
+  $('progressBar').style.width = pct + '%';
+}
+
+function renderQuickList() {
+  const ql = $('quickList');
+  ql.innerHTML = '';
+  if (!S.notes.length) {
+    ql.innerHTML = '<p style="color:var(--dim);font-size:12px;margin:6px 0">No notes yet</p>';
+    return;
+  }
+  S.notes.forEach(note => {
+    const row = document.createElement('div');
+    row.className = 'quick-item';
+
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.className = 'quick-chk';
+    chk.checked = note.done;
+    chk.addEventListener('change', () => toggleNote(note.id));
+
+    const nm = document.createElement('span');
+    nm.className = 'quick-nm' + (note.done ? ' done' : '');
+    nm.textContent = note.text || '(no text)';
+
+    const tc = document.createElement('span');
+    tc.className = 'quick-tc';
+    tc.textContent = note.tc;
+
+    row.appendChild(chk);
+    row.appendChild(nm);
+    row.appendChild(tc);
+    ql.appendChild(row);
+  });
+}
+
+function renderShowList() {
+  const list = $('showList');
+  list.innerHTML = '';
+  const store = loadStore();
+  const shows = store.shows || {};
+  const names = Object.keys(shows).sort();
+  if (!names.length) {
+    list.innerHTML = '<p style="color:var(--dim);font-size:12px;margin:4px 0">No saved shows</p>';
+    return;
+  }
+  names.forEach(name => {
+    const cnt = (shows[name].notes || []).length;
+    const el = document.createElement('div');
+    el.className = 'show-item' + (name === S.showName ? ' sel' : '');
+    el.innerHTML = `<span class="show-nm">${esc(name)}</span><span class="show-cnt">${cnt} note${cnt !== 1 ? 's' : ''}</span>`;
+    el.addEventListener('click', () => switchShow(name));
+    list.appendChild(el);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// SHOW MANAGEMENT
+// ════════════════════════════════════════════════════════════════════
+function switchShow(name) {
+  if (name === S.showName) return;
+  stopClock();
+  S.elapsedMs = 0;
+  loadShow(name);
+  $('showNameInput').value = S.showName;
+  updateClockDisplay();
+  renderNotes();
+}
+
+function newShow() {
+  const name = prompt('Enter show name:', 'Show ' + new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }));
+  if (!name?.trim()) return;
+  const trimmed = name.trim();
+  saveStore();
+  stopClock();
+  S.elapsedMs = 0;
+  S.showName = trimmed;
+  S.notes = [];
+  $('showNameInput').value = trimmed;
+  saveStore();
+  updateClockDisplay();
+  renderNotes();
+}
+
+function deleteCurrentShow() {
+  if (!confirm(`Delete "${S.showName}" and all its notes?\nThis cannot be undone.`)) return;
+  const store = loadStore();
+  delete store.shows[S.showName];
+  const remaining = Object.keys(store.shows || {});
+  store.lastShow = remaining[0] || '';
+  localStorage.setItem(STORE_KEY, JSON.stringify(store));
+  stopClock();
+  S.elapsedMs = 0;
+  if (remaining.length) {
+    loadShow(remaining[0]);
+  } else {
+    S.showName = 'Default Show';
+    S.notes = [];
+    saveStore();
+  }
+  $('showNameInput').value = S.showName;
+  updateClockDisplay();
+  renderNotes();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// EXPORT / IMPORT
+// ════════════════════════════════════════════════════════════════════
+function dl(content, filename, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type }));
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function slug(s) {
+  return (s || 'show').replace(/[^a-z0-9]/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+}
+
+function exportJSON() {
+  dl(JSON.stringify({ show: S.showName, exported: new Date().toISOString(), notes: S.notes }, null, 2),
+    slug(S.showName) + '-notes.json', 'application/json');
+}
+
+function exportCSV() {
+  const rows = [['Timecode', 'Done', 'Note']];
+  S.notes.forEach(n => rows.push([n.tc, n.done ? 'Yes' : 'No', '"' + (n.text || '').replace(/"/g, '""') + '"']));
+  dl(rows.map(r => r.join(',')).join('\r\n'), slug(S.showName) + '-notes.csv', 'text/csv');
+}
+
+function importJSON(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!Array.isArray(data.notes)) throw new Error('Missing notes array');
+      if (!confirm(`Import ${data.notes.length} note(s) from "${data.show || file.name}"?\nThis replaces current notes.`)) return;
+      S.notes = data.notes;
+      if (data.show) { S.showName = data.show; $('showNameInput').value = data.show; }
+      saveStore();
+      renderNotes();
+    } catch (err) { alert('Import failed: ' + err.message); }
+  };
+  reader.readAsText(file);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MODE SWITCHING
+// ════════════════════════════════════════════════════════════════════
+function setMode(mode) {
+  S.mode = mode;
+  const isTC = mode === 'timecode';
+
+  $('btnModeStop').classList.toggle('on', !isTC);
+  $('btnModeTC').classList.toggle('on', isTC);
+
+  $('swControls').style.display = isTC ? 'none' : 'flex';
+  $('tcControls').style.display = isTC ? 'flex' : 'none';
+  $('tcStatus').style.display = isTC ? 'flex' : 'none';
+
+  $('clockCs').style.display = isTC ? 'none' : '';
+  $('clock').classList.toggle('tc-mode', isTC);
+
+  if (isTC) {
+    stopClock();
+    $('clock').textContent = '——:——:——';
+    $('entryBadge').textContent = '——:——:——';
+    $('clockCs').textContent = '';
+  } else {
+    updateClockDisplay();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// TIMECODE — stub (future QSys TCP connection)
+// ════════════════════════════════════════════════════════════════════
+function connectTimecode(host, port) {
+  // Future: open a WebSocket to a local bridge server that proxies the
+  // QSys External Control TCP stream (HH:MM:SS) to the browser.
+  // On each received frame: S.externalTcMs = parsedMs; (RAF loop updates display)
+  //
+  // For now: show a "not implemented" notice.
+  alert(`TCP bridge not yet implemented.\nWill connect to ${host}:${port} via a local WebSocket proxy.`);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════════
+function init() {
+  loadShow();
+  $('showNameInput').value = S.showName;
+
+  // ── clock controls ──
+  $('btnStartStop').addEventListener('click', () => {
+    if (S.running) stopClock(); else startClock();
+  });
+
+  $('btnReset').addEventListener('click', () => {
+    if (!S.running || confirm('Reset the clock?')) resetClock();
+  });
+
+  $('btnSetOffset').addEventListener('click', () => {
+    const ms = parseTC($('offsetInput').value);
+    if (ms === null) { alert('Invalid format. Use HH:MM:SS or MM:SS'); return; }
+    S.offsetMs = ms;
+    S.elapsedMs = 0;
+    if (S.running) { S.startPerf = performance.now(); }
+    else updateClockDisplay();
+  });
+
+  $('offsetInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); $('btnSetOffset').click(); }
+  });
+
+  // ── note entry ──
+  function doStamp() {
+    const inp = $('noteInput');
+    stampNote(inp.value);
+    inp.value = '';
+    inp.focus();
+  }
+
+  $('noteInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doStamp(); }
+  });
+  $('btnStamp').addEventListener('click', doStamp);
+
+  $('btnClearDone').addEventListener('click', () => {
+    if (!confirm('Remove all completed notes?')) return;
+    S.notes = S.notes.filter(n => !n.done);
+    saveStore();
+    renderNotes();
+  });
+
+  // ── mode buttons ──
+  $('btnModeStop').addEventListener('click', () => setMode('stopwatch'));
+  $('btnModeTC').addEventListener('click', () => setMode('timecode'));
+
+  // ── TC connect ──
+  $('btnConnect').addEventListener('click', () => {
+    connectTimecode($('tcHost').value.trim() || 'localhost', parseInt($('tcPort').value) || 1710);
+  });
+
+  // ── show name rename ──
+  $('showNameInput').addEventListener('change', e => {
+    const newName = e.target.value.trim();
+    if (!newName || newName === S.showName) return;
+    const store = loadStore();
+    if (store.shows?.[S.showName]) {
+      store.shows[newName] = store.shows[S.showName];
+      delete store.shows[S.showName];
+      store.lastShow = newName;
+      localStorage.setItem(STORE_KEY, JSON.stringify(store));
+    }
+    S.showName = newName;
+    saveStore();
+    renderShowList();
+  });
+
+  // ── show management ──
+  $('btnNewShow').addEventListener('click', newShow);
+  $('btnDelShow').addEventListener('click', deleteCurrentShow);
+
+  // ── export / import ──
+  $('btnExportJSON').addEventListener('click', exportJSON);
+  $('btnExportCSV').addEventListener('click', exportCSV);
+  $('importFile').addEventListener('change', e => {
+    if (e.target.files[0]) { importJSON(e.target.files[0]); e.target.value = ''; }
+  });
+
+  // ── collapsible sections ──
+  document.querySelectorAll('.sect h3').forEach(h3 => {
+    h3.addEventListener('click', () => h3.closest('.sect').classList.toggle('collapsed'));
+  });
+
+  // ── global keyboard shortcuts ──
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === ' ') {
+      e.preventDefault();
+      if (S.mode === 'stopwatch') { if (S.running) stopClock(); else startClock(); }
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      $('noteInput').focus();
+    }
+  });
+
+  // ── initial render ──
+  renderNotes();
+  updateClockDisplay();
+  $('noteInput').focus();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
