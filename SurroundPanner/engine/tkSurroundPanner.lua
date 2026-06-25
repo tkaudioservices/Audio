@@ -1,5 +1,5 @@
 --[[
-  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.25.0
+  tkSurroundPanner.lua  --  tk Audio Services   (JSFX edition)  ·  v0.34.0
   ==================================================================
   Live link between REAPER and the tkSurroundPanner web UI, now driving our
   own  tk SurroundPanner  JSFX instead of ReaSurroundPan.
@@ -30,11 +30,14 @@ local ROOM   = IPC .. "/room.json"
 local LEVELS = IPC .. "/levels.json"
 local BAKE   = IPC .. "/bake.json"
 local AUTO   = IPC .. "/automation.json"
+local ENV    = IPC .. "/envelopes.json"
+local FXRAW  = IPC .. "/fxraw.json"
 local RENAME = IPC .. "/rename.json"
 local MATCH = "surroundpanner"   -- matches "JS: tk SurroundPanner", not "ReaSurroundPan"
 local MB     = 1000              -- gmem meter base, matches the JSFX (gmem[MB+ch] = peak per output)
 local MAXSPK = 16                -- matches the JSFX MAXOUT
 local STRIDE = 9                 -- per-speaker gmem block: x, y, z, lfe, cw, cd, ca, type, beamwidth (matches the JSFX)
+local POSB, POSMARK = 2000, 12345  -- live-position channel: gmem[POSB+track*4 +0..2]=effective x/y/z, +3=marker (matches the JSFX)
 
 local function setstate(on)
   reaper.SetExtState(NS, "live", on and "1" or "0", false)
@@ -84,6 +87,39 @@ local function instances()
   return list
 end
 
+local function track_by_num(n) return reaper.GetTrack(0, n - 1) end   -- 1-based track number -> MediaTrack
+local function find_fx_named(tr, pat)
+  for i = 0, reaper.TrackFX_GetCount(tr) - 1 do
+    local _, nm = reaper.TrackFX_GetFXName(tr, i, "")
+    if nm:lower():find(pat) then return i end
+  end
+  return -1
+end
+
+-- find the optional rig plug-ins (Monitor fold, Noise generator) anywhere in the project, so the web
+-- UI can surface their controls. Returns a JSON object; monitor/noise are their track+fx and live
+-- param values, or null when not present.
+local function buildGear()
+  local mon, noi = "null", "null"
+  for t = 0, reaper.CountTracks(0) - 1 do
+    local tr = reaper.GetTrack(0, t)
+    local tn = math.floor(reaper.GetMediaTrackInfo_Value(tr, "IP_TRACKNUMBER"))
+    if mon == "null" then
+      local f = find_fx_named(tr, "surroundmonitor")
+      if f >= 0 then mon = string.format('{"track":%d,"fx":%d,"mode":%d,"out":%.2f,"width":%.1f,"lfe":%d}',
+        tn, f, math.floor(reaper.TrackFX_GetParam(tr, f, 0) + 0.5), reaper.TrackFX_GetParam(tr, f, 1),
+        reaper.TrackFX_GetParam(tr, f, 2), math.floor(reaper.TrackFX_GetParam(tr, f, 3) + 0.5)) end
+    end
+    if noi == "null" then
+      local f = find_fx_named(tr, "surroundnoise")
+      if f >= 0 then noi = string.format('{"track":%d,"fx":%d,"on":%d,"ch":%d,"level":%.2f}',
+        tn, f, math.floor(reaper.TrackFX_GetParam(tr, f, 0) + 0.5), math.floor(reaper.TrackFX_GetParam(tr, f, 1) + 0.5),
+        reaper.TrackFX_GetParam(tr, f, 2)) end
+    end
+  end
+  return '{"monitor":' .. mon .. ',"noise":' .. noi .. '}'
+end
+
 -- Set a JSFX slider by its NATIVE value, but go through the *normalized* API so it lands
 -- reliably. reaper.TrackFX_SetParam's interpretation of out-of-0..1 values is the classic
 -- "the parameter doesn't move" gotcha (e.g. Rolloff 0.5..4); SetParamNormalized is
@@ -125,6 +161,7 @@ local function applyCmds(insts)
       elseif pp == 14 then slider = 10; sval = val          -- FX axis (0..2)          per object
       elseif pp == 15 then slider = 11; sval = val          -- FX phase (0..1)         per object
       elseif pp == 16 then slider = 12; sval = val          -- Depth cue (0..1)        panner law (all objects)
+      elseif pp == 17 then slider = 14; sval = val          -- FX angle (Oscillate, 0..360°)  per object
       end
       if slider then setparam(inst.tr, inst.fx, slider, sval) end
     end
@@ -158,8 +195,14 @@ local function bakeTrack(inst, bx, by, bz)
   local depth = reaper.TrackFX_GetParam(tr, fx, 9)
   local ax    = math.floor(reaper.TrackFX_GetParam(tr, fx, 10) + 0.5)
   local phase = reaper.TrackFX_GetParam(tr, fx, 11)                 -- per-object cycle offset
-  -- bx/by/bz: the object's BASE position, sent by the UI (the X/Y/Z sliders hold the live, moving
-  -- value while an effect runs, so we can't read the base off the plug-in)
+  local angle = reaper.TrackFX_GetParam(tr, fx, 14) * math.pi / 180 -- Oscillate sweep direction (rad)
+  -- BASE position: read it straight off the plug-in's X/Y/Z sliders. The effect modulates an INTERNAL
+  -- position and never writes the motion back to the sliders, so slider1/2/3 ARE the base even while an
+  -- effect runs. Baking around this (not the UI's possibly-stale value) makes the baked move match the
+  -- live engine exactly — same centre, full range. (bx/by/bz from the UI are kept only as a fallback.)
+  bx = reaper.TrackFX_GetParam(tr, fx, 0)
+  by = reaper.TrackFX_GetParam(tr, fx, 1)
+  bz = reaper.TrackFX_GetParam(tr, fx, 2)
   local t0, t1 = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
   if t1 <= t0 then t0 = 0; t1 = reaper.GetProjectLength(0) end
   if t1 <= t0 then return false end
@@ -169,7 +212,6 @@ local function bakeTrack(inst, bx, by, bz)
   local envX = reaper.GetFXEnvelope(tr, fx, 0, true)
   local envY = reaper.GetFXEnvelope(tr, fx, 1, true)
   local envZ = reaper.GetFXEnvelope(tr, fx, 2, true)
-  local scX, scY, scZ = reaper.GetEnvelopeScalingMode(envX), reaper.GetEnvelopeScalingMode(envY), reaper.GetEnvelopeScalingMode(envZ)
   reaper.DeleteEnvelopePointRange(envX, t0 - 1e-9, t1 + 1e-9)        -- overwrite any previous bake in range
   reaper.DeleteEnvelopePointRange(envY, t0 - 1e-9, t1 + 1e-9)
   reaper.DeleteEnvelopePointRange(envZ, t0 - 1e-9, t1 + 1e-9)
@@ -184,9 +226,10 @@ local function bakeTrack(inst, bx, by, bz)
     local ex, ey, ez = bx, by, bz
     if ft == 1 then                         -- Orbit
       ex = bx + depth * math.cos(ph); ey = by + depth * math.sin(ph)
-    elseif ft == 2 then                     -- Oscillate
+    elseif ft == 2 then                     -- Oscillate — Z vertical, else sweep along the angle in X/Y
       local o = depth * math.sin(ph)
-      if ax == 0 then ex = bx + o elseif ax == 1 then ey = by + o else ez = bz + o end
+      if ax == 2 then ez = bz + o
+      else local dir = (ax == 1 and math.pi/2 or 0) + angle; ex = bx + o*math.cos(dir); ey = by + o*math.sin(dir) end
     elseif ft == 4 then                     -- Drift
       if rt >= nextDrift then nextDrift = rt + 0.5; dtx = (rnd() * 2 - 1) * depth; dty = (rnd() * 2 - 1) * depth end
       drx = drx + 0.08 * (dtx - drx); dry = dry + 0.08 * (dty - dry)
@@ -196,10 +239,12 @@ local function bakeTrack(inst, bx, by, bz)
     ey = ey < -1 and -1 or (ey > 1 and 1 or ey)
     ez = ez < 0 and 0 or (ez > 1 and 1 or ez)
     local t = t0 + rt
-    -- ScaleToEnvelopeMode keeps the value correct whether the FX envelope is linear or fader-scaled
-    reaper.InsertEnvelopePoint(envX, t, reaper.ScaleToEnvelopeMode(scX, normParam(tr, fx, 0, ex)), 0, 0, false, true)
-    reaper.InsertEnvelopePoint(envY, t, reaper.ScaleToEnvelopeMode(scY, normParam(tr, fx, 1, ey)), 0, 0, false, true)
-    reaper.InsertEnvelopePoint(envZ, t, reaper.ScaleToEnvelopeMode(scZ, normParam(tr, fx, 2, ez)), 0, 0, false, true)
+    -- Write the NATIVE slider value (X/Y in -1..1, Z in 0..1) straight to the FX envelope. (Writing the
+    -- normalized 0..1 value made REAPER play it back as the native value — a centred swing came out
+    -- compressed and pushed toward +X/+Y, which is the bug we were chasing.)
+    reaper.InsertEnvelopePoint(envX, t, ex, 0, 0, false, true)
+    reaper.InsertEnvelopePoint(envY, t, ey, 0, 0, false, true)
+    reaper.InsertEnvelopePoint(envZ, t, ez, 0, 0, false, true)
     k = k + 1
   end
   reaper.Envelope_SortPoints(envX); reaper.Envelope_SortPoints(envY); reaper.Envelope_SortPoints(envZ)
@@ -280,6 +325,52 @@ local function applyAutomation(insts)
   reaper.PreventUIRefresh(-1); reaper.UpdateArrange()
 end
 
+-- enable (read) / disable (bypass) the X/Y/Z FX-parameter envelopes, using REAPER's native
+-- envelope active flag (ACT in the state chunk). This switches a baked/recorded move off WITHOUT
+-- deleting it, and — crucially — lets "Follow FX engine" fully bypass a leftover envelope so the
+-- live generator and the automation never fight. envelopes.json = {"seq":N,"action":"enable"|"disable","tracks":[t,...]}
+local lastEnvSeq = -1
+local function envActive(env, on)
+  local ok, chunk = reaper.GetEnvelopeStateChunk(env, "", false)
+  if not ok then return end
+  chunk = chunk:gsub("(\nACT )%-?%d+", "%1" .. (on and 1 or 0), 1)   -- ACT 1 = play back, 0 = bypass
+  reaper.SetEnvelopeStateChunk(env, chunk, false)
+end
+local function setEnvActive(inst, on)
+  local tr, fx = inst.tr, inst.fx
+  for p = 0, 2 do                                    -- X/Y/Z FX-param envelopes — don't create them (false)
+    local env = reaper.GetFXEnvelope(tr, fx, p, false)
+    if env then envActive(env, on) end
+  end
+end
+local function applyEnvelopes(insts)
+  local s = readfile(ENV); if not s then return end
+  local seq = tonumber(s:match('"seq":(%-?%d+)')); if not seq or seq == lastEnvSeq then return end
+  lastEnvSeq = seq
+  local action = s:match('"action":"(%a+)"') or "disable"
+  local tlist  = s:match('"tracks":%[([%d,%s]*)%]') or ""
+  reaper.PreventUIRefresh(1)
+  for n in tlist:gmatch('(%d+)') do
+    local inst = insts[tonumber(n)]
+    if inst then setEnvActive(inst, action == "enable") end
+  end
+  reaper.PreventUIRefresh(-1); reaper.UpdateArrange()
+end
+
+-- raw FX-parameter set for the optional rig plug-ins (Monitor fold, Noise generator). The web UI
+-- sends native values; setparam normalises against each plug-in's own ranges.
+-- fxraw.json = {"seq":N,"sets":[{"t":T,"f":F,"p":P,"v":V}, ...]}
+local lastFxRawSeq = -1
+local function applyFxRaw()
+  local s = readfile(FXRAW); if not s then return end
+  local seq = tonumber(s:match('"seq":(%-?%d+)')); if not seq or seq == lastFxRawSeq then return end
+  lastFxRawSeq = seq
+  for t, f, p, v in s:gmatch('"t":(%-?%d+),"f":(%-?%d+),"p":(%-?%d+),"v":(%-?%d*%.?%d+)') do
+    local tr = track_by_num(tonumber(t))
+    if tr then setparam(tr, tonumber(f), tonumber(p), tonumber(v)) end
+  end
+end
+
 -- set REAPER track names from the UI -----------------------------
 -- rename.json = {"seq":N,"items":[{"t":T,"name":"..."}]}  (JSON-escaped by the bridge)
 local lastRenameSeq = -1
@@ -309,13 +400,21 @@ local function buildSession()
       local x = reaper.TrackFX_GetParam(tr, fx, 0)
       local y = reaper.TrackFX_GetParam(tr, fx, 1)
       local z = reaper.TrackFX_GetParam(tr, fx, 2)
+      -- effect settings, so a web-UI refresh restores them (the plug-in is the source of truth)
+      local fe = math.floor(reaper.TrackFX_GetParam(tr, fx, 7) + 0.5)
+      local fr = reaper.TrackFX_GetParam(tr, fx, 8)
+      local fd = reaper.TrackFX_GetParam(tr, fx, 9)
+      local fa = math.floor(reaper.TrackFX_GetParam(tr, fx, 10) + 0.5)
+      local fp = reaper.TrackFX_GetParam(tr, fx, 11)
+      local fang = reaper.TrackFX_GetParam(tr, fx, 14)
       local nch = math.floor(reaper.GetMediaTrackInfo_Value(tr, "I_NCHAN"))
       objs[#objs + 1] = string.format(
-        '{%s:%s,%s:%s,%s:%s,%s:%.4f,%s:%.4f,%s:%.4f,%s:{%s:%d,%s:%d,%s:4,%s:5,%s:6,%s:7,%s:10,%s:11,%s:12,%s:13,%s:14,%s:15}}',
+        '{%s:%s,%s:%s,%s:%s,%s:%.4f,%s:%.4f,%s:%.4f,%s:%d,%s:%.4f,%s:%.4f,%s:%d,%s:%.4f,%s:%.1f,%s:{%s:%d,%s:%d,%s:4,%s:5,%s:6,%s:7,%s:10,%s:11,%s:12,%s:13,%s:14,%s:15,%s:17}}',
         jstr("name"), jstr(track_name(tr)), jstr("color"), jstr(track_color(tr)), jstr("group"), jstr(group),
         jstr("x"), x, jstr("y"), y, jstr("z"), z,
+        jstr("fe"), fe, jstr("fr"), fr, jstr("fd"), fd, jstr("fa"), fa, jstr("fp"), fp, jstr("fang"), fang,
         jstr("osc"), jstr("track"), oscT, jstr("fx"), fx + 1, jstr("px"), jstr("py"), jstr("pz"), jstr("pg"), jstr("pl"),
-        jstr("pe"), jstr("pr"), jstr("pd"), jstr("pa"), jstr("pph"))
+        jstr("pe"), jstr("pr"), jstr("pd"), jstr("pa"), jstr("pph"), jstr("pang"))
       tracks[#tracks + 1] = string.format('{%s:%d,%s:%s,%s:%d}',
         jstr("track"), oscT, jstr("name"), jstr(track_name(tr)), jstr("nch"), nch)
     end
@@ -323,7 +422,7 @@ local function buildSession()
     elseif depth < 0 then for _ = 1, math.floor(-depth) do stack[#stack] = nil end end
   end
   return '{"project":"Live from REAPER","live":true,"objects":[' .. table.concat(objs, ",") ..
-         '],"tracks":[' .. table.concat(tracks, ",") .. "]}"
+         '],"tracks":[' .. table.concat(tracks, ",") .. '],"gear":' .. buildGear() .. "}"
 end
 
 -- write the web-UI room (room.json) into shared memory for the JSFX
@@ -376,14 +475,39 @@ end
 -- live output meters: peak per output channel, read straight from the panner via shared memory.
 -- Decoupled from bus routing, so the web meters match the in-plugin display exactly. Each JSFX
 -- instance maxes its peak into gmem[MB+ch]; we read then clear so each interval shows a fresh peak.
-local function writeLevels()
+-- The EFFECTIVE x/y/z the plug-in is actually outputting (base + live effect motion, or the envelope
+-- value while reading automation). The JSFX publishes it to gmem keyed by its slot; we hand each
+-- instance its slot (= track number) via slider14, then read it back — so the web view mirrors the
+-- plug-in exactly, with no second clock to drift. Falls back to the base sliders if the plug-in hasn't
+-- published yet (older JSFX, or not processing), so it degrades to the previous behaviour.
+local function livePos(inst, tnum)
+  if tnum < 1024 then
+    local sv = reaper.TrackFX_GetParam(inst.tr, inst.fx, 13)        -- slider14 = our slot; set it once if wrong
+    if math.floor((sv or -1) + 0.5) ~= tnum then setparam(inst.tr, inst.fx, 13, tnum) end
+    local pb = POSB + tnum * 4
+    if reaper.gmem_read(pb + 3) == POSMARK then
+      return reaper.gmem_read(pb), reaper.gmem_read(pb + 1), reaper.gmem_read(pb + 2)
+    end
+  end
+  return reaper.TrackFX_GetParam(inst.tr, inst.fx, 0),
+         reaper.TrackFX_GetParam(inst.tr, inst.fx, 1),
+         reaper.TrackFX_GetParam(inst.tr, inst.fx, 2)
+end
+
+local function writeLevels(insts)
   local n = roomCount; if n < 1 then n = 2 end
   local t = {}
   for c = 0, n - 1 do
     t[#t + 1] = string.format("%.4f", reaper.gmem_read(MB + c))
     reaper.gmem_write(MB + c, 0)
   end
-  writefile_atomic(LEVELS, '{"levels":[' .. table.concat(t, ",") .. ']}')
+  local p = {}
+  for tnum, inst in pairs(insts) do
+    local x, y, z = livePos(inst, tnum)
+    p[#p + 1] = string.format('{"t":%d,"x":%.4f,"y":%.4f,"z":%.4f}', tnum, x, y, z)
+  end
+  local play = reaper.GetPlayState()   -- bit 0 = playing, bit 2 = recording
+  writefile_atomic(LEVELS, '{"levels":[' .. table.concat(t, ",") .. '],"pos":[' .. table.concat(p, ",") .. '],"play":' .. play .. '}')
 end
 
 -- main loop -------------------------------------------------------
@@ -397,10 +521,12 @@ local function loop()
     applyCmds(insts)
     applyBake(insts)
     applyAutomation(insts)
+    applyEnvelopes(insts)
+    applyFxRaw()
     applyRename(insts)
     loadRoom()
     local now = reaper.time_precise()
-    if now - lastLevels > 0.08 then lastLevels = now; writeLevels() end   -- ~12 Hz meters
+    if now - lastLevels > 0.08 then lastLevels = now; writeLevels(insts) end   -- ~12 Hz meters + live positions
     if now - lastWrite > 0.5 then lastWrite = now; setChannels(insts); writefile_atomic(SESS, buildSession()) end
   end)
   if not ok then local lf = io.open(IPC .. "/live_error.log", "w"); if lf then lf:write(tostring(err)); lf:close() end end

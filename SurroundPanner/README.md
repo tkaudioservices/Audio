@@ -18,6 +18,13 @@ like L‑ISA Studio or KLANG — but talking to a REAPER session you already own
 See **[WORKFLOW.md](WORKFLOW.md)** for the full empty‑project‑to‑render walkthrough,
 and **[CHANGELOG.md](CHANGELOG.md)** for what changed when.
 
+> **Status — v0.34.0, release candidate for v1.0.** Feature‑complete and in field
+> testing. The control surface, DBAP panner, custom rooms with directional coverage,
+> the per‑object effects engine with bake/record automation, cue snapshots, the
+> stereo/binaural monitor and rig‑setup noise are all in. Recent passes fixed the
+> left/right‑coverage pan, made the view mirror the plug‑in, and put the bake on the
+> correct (native) envelope values.
+
 ---
 
 ## What's in here
@@ -27,7 +34,7 @@ and **[CHANGELOG.md](CHANGELOG.md)** for what changed when.
 | `index.html` | The control surface. Open it in any browser — it works standalone for design even with no REAPER or bridge running. |
 | `engine/tk_SurroundPanner.jsfx` | **The panner.** A DBAP object panner (2 in → up to 16 out) whose sliders we drive directly, so external control is reliable. It reads the speaker layout live from REAPER shared memory, has a per‑object LFE send, and shows a compact value readout. Installed into REAPER's `Effects/tk`. |
 | `engine/tk_SurroundNoise.jsfx` | **Rig‑setup noise.** A pink‑noise generator for your immersive bus. The UI's *Speaker check* drives it to send noise to one speaker (or all), so you can line up, level‑match and verify the real rig. Publishes into the same meters as the panner. Installed alongside the panner. |
-| `engine/tk_SurroundMonitor.jsfx` | **Rehearsal / headphone fold.** Put on a stereo monitor track fed by the immersive bus; folds all speaker channels to stereo by each speaker's angle (read from the same shared layout). Two modes — **Stereo fold** (amplitude) and **Binaural** (parametric ITD + head‑shadow) — for working without the rig. Leaves the real speaker bus untouched. |
+| `engine/tk_SurroundMonitor.jsfx` | **Rehearsal / headphone fold.** Put on a stereo monitor track fed by the immersive bus; folds all speaker channels to stereo by each speaker's angle (read from the same shared layout). Three modes — **Stereo fold** (amplitude), **Binaural** (parametric ITD + head‑shadow), and **Bypass** (passes the bed L/R straight, to A/B the fold) — for working without the rig. Leaves the real speaker bus untouched. |
 | `engine/tkSurroundPanner.lua` | **The live link.** Run once inside REAPER and leave it running. It drives every `tk SurroundPanner` instance from the UI, pushes the room layout into shared memory, auto‑grows track/bus channel counts, and publishes the scene + meters back to the UI. |
 | `bridge/reaper_bridge.py` | Tiny stdlib HTTP bridge. Serves the UI and shuttles small JSON files between the browser and the Live script. No OSC, no extensions. |
 | `Install tkSurroundPanner.command` / `.bat` | Double‑click installer — copies the JSFX into REAPER's `Effects/tk`. Run once, and again after an update. |
@@ -119,10 +126,22 @@ file (not just while the UI is open):
 - **Spread / size** — widens the object across more speakers (grows its field).
 - **Random drift** — gentle organic wander within a bound.
 
-Set **Effect / Rate / Depth / Axis** per object in the Objects panel. The web view animates the
-object live along its path and draws the effect's extent, and the latch lines + meters follow it
-— so what you see tracks what you hear. (Orbit/Oscillate are phase‑exact in the preview; Drift is
-an approximation, since the plug‑in's drift is randomised.)
+Set **Effect / Rate / Depth / Axis** per object in the Objects panel. Oscillate also has an
+**Angle** — it sweeps along any direction in the horizontal plane (0° = L/R, 90° = F/R, anything
+between = a diagonal; the Z axis stays vertical). The web view animates the object live along its
+path and draws the effect's extent, and the latch lines + meters follow it — so what you see tracks
+what you hear. (Orbit/Oscillate are phase‑exact in the preview; Drift is an approximation, since the
+plug‑in's drift is randomised.)
+
+**Movement source — generator ⇄ automation, kept in harmony.** Each object is in one of three modes:
+**Follow FX** (run the built‑in generator), **Enable Env.** (read a baked or recorded X/Y/Z
+**automation** envelope), or **Disable Env.** (bypass the envelope and hold the manual position).
+Switching modes uses REAPER's native envelope **bypass** so a move is never deleted, and the
+generator never fights an envelope. Switching away from Follow FX remembers the whole generator
+setup (type + rate/depth/axis/angle/phase) so toggling back restores exactly what you had. The same
+three actions are available for **all objects** at once. With the view following the plug‑in, an
+**Enable Env.** object animates from REAPER's real automation on playback, while a **Follow FX**
+object shows its free‑running preview.
 
 **Select several objects** (Ctrl/⌘‑click and Shift‑click in the Objects list) and the effect
 controls apply to the whole selection, so you can shape a group together. Each effect also has a
@@ -209,6 +228,11 @@ playing. Press play in REAPER so the bus processes audio; flip **Test noise** of
 It's a single source on the bus (independent of how many object tracks you have), so the rig
 check is predictable no matter what the show looks like.
 
+**Rig gear panel.** When `tk SurroundMonitor` or `tk SurroundNoise` is found on any track, the UI's
+**Rig gear** section shows their controls automatically — monitor mode / output / width / LFE, and
+noise on / speaker / level — so you can drive the fold and the speaker check from the control
+surface without opening the plug‑ins.
+
 ---
 
 ## Versioning
@@ -228,10 +252,12 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 |---|---|---|
 | `cmds.json` | UI → REAPER | `{"seq":N,"params":[{"t","f","p","v"}, …]}` — latest value per (track, fx, param). |
 | `room.json` | UI → REAPER | `{"speakers":[{"x","y","z","lfe","cw","cd","ca","bw","ty"}, …]}` — layout + coverage. Ceiling/sub: ellipse `cw`/`cd` half‑axes, `ca` angle°. Wall: wedge `cw` = throw, `bw` = beam width°, `ca` = aim°. `ty` = mount type (0 ceiling, 1 wall, 2 sub); 0 = off. |
-| `session.json` | REAPER → UI | Objects (name, colour, group, x/y/z, param tags) + track list. |
-| `levels.json` | REAPER → UI | `{"levels":[…]}` — per‑speaker peak, ~12×/sec. |
+| `session.json` | REAPER → UI | Objects (name, colour, group, x/y/z, effect settings, param tags) + track list + detected rig gear (monitor/noise). |
+| `levels.json` | REAPER → UI | `{"levels":[…],"pos":[{t,x,y,z}…],"play":N}` — per‑speaker peak, each object's live effective position, and the transport play state, ~12×/sec. |
 | `bake.json` | UI → REAPER | `{"seq":N,"action":"bake"|"clear","items":[{t,x,y,z}…]}` — bake each object's effect motion (around base x/y/z) to X/Y/Z FX‑parameter envelopes over the time selection (or clear them). |
 | `automation.json` | UI → REAPER | `{"seq":N,"mode":"rec"|"stop","tracks":[…]}` — arm/disarm REAPER latch recording of object moves to X/Y/Z envelopes. |
+| `envelopes.json` | UI → REAPER | `{"seq":N,"action":"enable"|"disable","tracks":[…]}` — enable (read) or bypass the X/Y/Z envelopes via REAPER's native active flag, without deleting them. |
+| `fxraw.json` | UI → REAPER | `{"seq":N,"sets":[{t,f,p,v}…]}` — raw parameter set on any track/fx (drives the rig‑gear plug‑ins from the UI). |
 | `rename.json` | UI → REAPER | `{"seq":N,"items":[{t,name}…]}` — set REAPER track names from the UI (editing an object's Name). |
 
 **Param tags** (the `p` in `cmds.json`) → JSFX slider:
@@ -251,6 +277,9 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 | 14 | FX axis (`0…2`: X/Y/Z) | 10 | per object |
 | 15 | FX phase (`0…1` cycle offset) | 11 | per object |
 | 16 | Depth cue (`0…1`) | 12 | panner law (all objects) |
+| 17 | FX angle (Oscillate sweep direction, `0…360°`) | 14 | per object |
+
+(JSFX param 13 is the live‑sync slot, set by the Live script — see shared memory below.)
 
 **Shared memory** (`gmem` namespace `tkSurroundPanner`):
 
@@ -261,11 +290,15 @@ installer's confirmation line. See [CHANGELOG.md](CHANGELOG.md).
 - `gmem[1000 + ch]` = per‑output peak. Each JSFX instance (panner **and** `tk SurroundNoise`)
   maxes its level in; the Live script reads and clears these for the meters. (The meter base sits
   at 1000 to stay clear of the layout block, which can reach ~145 at 16 speakers.)
+- `gmem[2000 + slot*4 ..]` = each panner's **live effective position** (`x`, `y`, `z`, + a validity
+  marker), where `slot` = the track number the Live script hands the plug‑in via its slot slider. Lets
+  the web view mirror exactly what the plug‑in is outputting (incl. effect motion / envelope reads).
 
 **Bridge** — `python3 bridge/reaper_bridge.py [--port 9000] [--host 127.0.0.1] [--ipc-dir DIR]`.
-Endpoints: `GET /ping`, `/session`, `/levels`, static files; `POST /set` (object moves),
-`/room` (layout), `/bake` (bake/clear effect → envelopes), `/automation` (arm/disarm move recording),
-`/rename` (set track names).
+Endpoints: `GET /ping`, `/session`, `/levels`, static files (served `no-store`, so a reload is always
+current); `POST /set` (object moves), `/room` (layout), `/bake` (bake/clear effect → envelopes),
+`/automation` (arm/disarm move recording), `/envelopes` (enable/bypass envelopes), `/fxraw` (rig‑gear
+params), `/rename` (set track names).
 
 ---
 
@@ -299,7 +332,17 @@ Endpoints: `GET /ping`, `/session`, `/levels`, static files; `POST /set` (object
 - [x] **Solo / mute** per object, reflected in the preview and the plug‑in.
 - [x] **Trajectory recording** — *Record moves* arms REAPER latch automation on the panner tracks,
       so dragging objects while playing records to editable X/Y/Z envelopes (capture side of Bake).
-- [ ] **Radial / spherical** room view (L‑ISA / KLANG style) alongside the X‑Y / X‑Z views.
+- [x] **Radial (circular‑room) top view** — concentric‑ring / polar view for round venues and
+      theatres‑in‑the‑round, alongside the Cartesian X‑Y / X‑Z views.
+- [x] **Generator ⇄ automation harmony** — explicit Follow FX / Enable Env. / Disable Env. modes
+      that bypass (never delete) envelopes, remember the generator setup, and let the view mirror the
+      plug‑in (live effect = preview; baked/recorded = real automation on playback).
+- [x] **Oscillate at any angle** — sweep along a diagonal, not just the X/Y/Z axes.
+- [x] **Rig‑gear panel** — auto‑detected `tk SurroundMonitor` / `tk SurroundNoise` controls in the UI;
+      monitor adds a **Bypass** mode alongside Stereo fold and Binaural.
+- [ ] **Measured HRIR / SOFA** binaural and elevation cues (current binaural is parametric).
+- [ ] **Single compiled extension** — optional path to fold the Lua + bridge into one REAPER
+      extension (no separate script/bridge), trading the no‑build simplicity for a per‑OS binary.
 
 ---
 

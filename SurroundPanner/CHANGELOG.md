@@ -3,6 +3,50 @@
 Versioning: `MAJOR.MINOR.PATCH`. The version shows in the web UI header and is
 mirrored by the bridge's `/ping` protocol version.
 
+## v0.34.0
+- **Movement modes remember the whole setup.** Switching to **Enable/Disable Env.** (or **Bake**) now stores the full generator setup — effect type, rate, depth, axis, angle, phase — and **Follow FX** restores exactly that, so toggling back (or clearing a bake) brings back what you had instead of a default. Survives a UI reload too.
+- **Stacked objects: the one you pick is on top.** When objects overlap, the **top of the list draws on top**, and the **selected** object comes to the very top — so selecting it in the side panel makes it grabbable, and a click on a stack grabs the selected (or top‑of‑list) object.
+
+## v0.33.1
+- **No more stale web UI.** The bridge now sends `Cache-Control: no-store`, so a browser reload always loads the current `index.html`/JS instead of a cached copy. (If reloads weren't picking up fixes, this was likely why.)
+
+## v0.33.0
+- **Bake fixed — for real this time (native values).** The bake wrote the *normalized* 0..1 value to each X/Y/Z envelope, but REAPER plays these FX‑parameter envelopes back as the **native** value — so a centred ±X swing came out compressed and shoved toward +X/+Y (the "shorter / top‑right" you saw). The bake now writes the native slider value straight in, so the baked move matches the live effect exactly. *(v0.31/0.32 changed the scaling call, which was a no‑op here — this is the actual cause.)*
+- **Follow FX animates the view again.** The dot now uses the same free‑running preview as the numeric faders for a live effect (instead of a streamed position that's frozen unless the transport rolls). So a Follow‑FX object animates continuously in the view, and the dot and the X/Y numbers always agree.
+- **Monitor: Bypass mode.** tk SurroundMonitor now has **Stereo fold · Binaural · Bypass** — Bypass passes the bed L/R straight through (no fold) for an A/B reference. Shown in the Rig gear panel.
+- **Enable Env. / Disable Env.** buttons are properly capitalised.
+
+## v0.32.0
+- **Fixed the baked shape (shorter / drifted to a corner).** The bake ran each X/Y/Z point through `ScaleToEnvelopeMode`, which warps a value when the FX-parameter envelope's reported scaling mode isn't linear. On a position envelope that bent the motion — a centred swing came out **compressed**, and a constant axis (e.g. Y held at centre) **drifted toward a corner** — even though the live audio never went through that curve. X/Y/Z are linear position params, so the bake now writes the normalized value **straight in**. The baked move matches the live effect (centre + full range).
+
+## v0.31.0
+- **Free-running effects animate in the view again, even when stopped.** v0.28 made the view mirror the plug-in's streamed position — but a live FX engine only advances while the transport rolls, so a stopped effect showed a frozen dot (and grabbing it, then letting go, snapped it back to the frozen value). The view now follows the plug-in's real position **while playing**, and falls back to its own free-running preview **when stopped**, so a Follow-FX object keeps moving in the view as you edit. Envelope reads stay playhead-locked (they sit at the cursor when stopped — press play to see them move).
+- *Note on the bake: verified numerically that the bake reproduces the live effect exactly (centre + full range). If a baked move still looks shorter/offset, it's a mixed install (older Live script) — reinstall + re-run `tkSurroundPanner.lua`; and judge a baked move with the transport **playing**, since a stopped envelope sits at the edit-cursor value.*
+
+## v0.30.0
+- **Oscillate can sweep at any angle.** New **Angle** control on the Oscillate effect rotates the sweep direction in the horizontal plane — 0° = L/R, 90° = F/R, anything between = a diagonal (Z stays vertical). The preview path, the audio, and the bake all follow it.
+
+## v0.29.0
+- **Bake now matches the live effect (full range).** The bake centred on the *UI's* base value, per a stale assumption that the sliders held the moving position. They don't — since v0.23 the effect modulates an internal position and the X/Y/Z sliders stay at the base — so the bake now reads the base **straight off the plug‑in**, guaranteeing the baked move has the same centre and full range as what you heard (fixes "FX engine pans L↔R but the bake only does centre→right").
+- **Rig gear panel.** A new **Rig gear** section auto‑detects **tk SurroundMonitor** and **tk SurroundNoise** anywhere in the project and shows their controls in the web UI — monitor fold mode / output / width / LFE, and noise on / speaker / level — sent straight to the plug‑in.
+- **Wider side panel + wrapping buttons** so the three‑way Source / All‑objects rows no longer clip.
+
+## v0.28.0
+- **The view now mirrors the plug‑in exactly — no more drift.** Previously a free‑running effect moved on the plug‑in's own clock while the web view ran its *own* preview clock, so they slid out of sync; and on **refresh** the page forgot the effect entirely (no movement at all). Now the plug‑in **publishes its true effective position** (base + live effect motion, or the envelope value) on the 12 Hz channel, and the view shows *that* — so what you see matches what you hear, for effects, envelope reads, and manual moves alike.
+- **Refresh is safe.** The plug‑in's effect settings (type / rate / depth / axis / phase) are published too, so reloading the web page restores them — the movement carries straight on instead of stopping.
+- **Radial view re‑described.** It's now called **Radial (circular room)** — a circular‑room / polar perspective for round venues and theatres‑in‑the‑round (not just a "listener‑centred" view).
+- *Under the hood: a hidden per‑instance slot (slider14, set by the Live script = track number) lets each plug‑in publish to its own shared‑memory slot; degrades safely to the base sliders if unavailable. Re‑run `tkSurroundPanner.lua` and reload the page after updating.*
+
+## v0.27.0
+- **The view now tracks the plug‑in automatically (live sync).** The web view follows the plug‑in's actual X/Y/Z, fed through the fast 12 Hz channel, so it **latches on load** and you can *see* what the plug‑in is doing: **reading an envelope** (baked/recorded) animates **locked to the playhead** as REAPER plays; a live **FX engine** shows its free‑running preview; **Enable/Disable env** and **Bake** visibly move the dot. (Previously this only happened if you manually ticked "Follow play".) The old toggle is now **Track plug‑in**, on by default — untick to freeze the view. Display only; it never changes the base.
+- **Movement model, confirmed:** the generator is **free‑running** (good for live performance), envelopes are **playhead‑locked** (standard automation). Bake captures the generator's shape into a playhead‑locked envelope.
+
+## v0.26.0
+- **Envelopes are now bypassed, not just cleared (no more fighting).** Switching a baked/recorded object back to the FX engine used to only *clear* the automation points — the envelope lane stayed active, so REAPER kept driving X/Y/Z from the (now empty) envelope and fought the generator. The plug‑in now **bypasses** the envelope using REAPER's native active flag, so it's truly off without losing the move (and you can re‑enable it later).
+- **Three explicit movement modes per object: Follow FX · Enable env · Disable env.** *Follow FX* runs the generator **and bypasses the envelopes** so nothing fights it. *Enable env* un‑bypasses the X/Y/Z envelopes to read a baked/recorded move. *Disable env* bypasses them, holding the object's manual position. (Replaces the two‑way Follow envelopes/FX toggle.)
+- **Global commands.** An **All objects** row (Follow FX · Enable env · Disable env) applies the same to every object at once, using REAPER's envelope bypass.
+- **Bake/Clear tie‑in.** Baking marks the object as reading its envelope; **Clear bake(s)** now also bypasses the (emptied) envelope so the restored effect can't fight it. *(Bridge protocol → v9: relaunch the bridge and re‑run `tkSurroundPanner.lua` after updating.)*
+
 ## v0.25.0
 - **Fixed reversed / dropping pans on rooms with wall‑coverage speakers (the real one).** The directional **wall wedge** gated a speaker off whenever an object sat *at or near* it but "behind" its aim — so panning hard left could come out the **right** (and vice‑versa), a speaker could go **silent** right where it should be loudest, and the level **jumped** as the object crossed the gate while DBAP normalisation flooded the other speakers. (This — not the effects engine — was behind the left/right reversal, the lopsided Oscillate, and the "two things fighting" jumps; those all happen with the effect Off too.) The wedge now drops its angular gating in the speaker's **near field**, so it always covers what sits on it, while keeping its directionality at distance. Verified against the reported 8‑speaker room: front L→L, C→C, R→R, sides/rears correct, and **L/R perfectly symmetric**. Fixed identically in the JSFX and the web meters.
 
